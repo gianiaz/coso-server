@@ -2,6 +2,8 @@
 
 Piccolo servizio Flask pensato per ricevere testo e immagini e inoltrarli alla Responses API di OpenAI. È eseguibile con Docker Compose in locale e con Gunicorn su un Raspberry Pi.
 
+Per l'installazione completa su Raspberry Pi senza Docker, la configurazione di `systemd`, gli aggiornamenti e il troubleshooting, consulta [setup.md](setup.md).
+
 ## Avvio locale con Docker
 
 Requisiti: Docker con il plugin Compose e una API key OpenAI.
@@ -23,6 +25,23 @@ Verifica lo stato:
 ```bash
 curl http://localhost:8000/health
 ```
+
+### Hello e sintesi vocale
+
+`GET /hello` genera con `espeak-ng` la frase `Ciao, sono Coso, come stai?` e restituisce all'ESP un comando con l'URL pubblico del WAV:
+
+```bash
+curl http://localhost:8000/hello
+```
+
+```json
+{
+  "type": "command",
+  "wav": "http://localhost:8000/wav/ciao-sono-coso-come-stai.wav"
+}
+```
+
+I file vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il server è dietro un reverse proxy, imposta `WAV_PUBLIC_BASE_URL` con l'origine pubblica, senza slash finale.
 
 ## API
 
@@ -95,11 +114,14 @@ pytest
 
 ## Raspberry Pi Zero
 
+La procedura completa consigliata è documentata in [setup.md](setup.md).
+
 Su Raspberry Pi Zero 2 W, usa Raspberry Pi OS 64 bit e avvia lo stesso `compose.yaml` con `docker compose up -d --build`.
 
-Il Raspberry Pi Zero originale usa ARMv6: le immagini Docker Python moderne possono non essere disponibili per questa architettura. In quel caso installa Python e le dipendenze direttamente su Raspberry Pi OS, poi esegui Gunicorn:
+Il Raspberry Pi Zero originale usa ARMv6: le immagini Docker Python moderne possono non essere disponibili per questa architettura. In quel caso installa Python, `espeak-ng` e le dipendenze direttamente su Raspberry Pi OS, poi esegui Gunicorn:
 
 ```bash
+sudo apt install python3-venv espeak-ng
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt

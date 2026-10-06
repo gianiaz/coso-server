@@ -1,10 +1,12 @@
 import logging
 import os
+from pathlib import Path
 
 from flask import Flask, jsonify
 
 from app.routes import api
 from app.services.openai_service import OpenAIService
+from app.services.speech_service import SpeechService
 
 
 def _int_env(name: str, default: int) -> int:
@@ -33,6 +35,13 @@ def create_app(test_config: dict | None = None) -> Flask:
         MAX_CONTENT_LENGTH=_int_env("MAX_REQUEST_BYTES", 8 * 1024 * 1024),
         MAX_IMAGE_BYTES=_int_env("MAX_IMAGE_BYTES", 5 * 1024 * 1024),
         MAX_TEXT_LENGTH=_int_env("MAX_TEXT_LENGTH", 20_000),
+        WAV_OUTPUT_DIR=os.getenv(
+            "WAV_OUTPUT_DIR",
+            str(Path(__file__).resolve().parent.parent / "data" / "wav"),
+        ),
+        WAV_PUBLIC_BASE_URL=os.getenv("WAV_PUBLIC_BASE_URL", ""),
+        ESPEAK_EXECUTABLE=os.getenv("ESPEAK_EXECUTABLE", "espeak-ng"),
+        ESPEAK_VOICE=os.getenv("ESPEAK_VOICE", "it"),
     )
 
     if test_config:
@@ -50,6 +59,11 @@ def create_app(test_config: dict | None = None) -> Flask:
         instructions=app.config["OPENAI_INSTRUCTIONS"],
         max_output_tokens=app.config["OPENAI_MAX_OUTPUT_TOKENS"],
         timeout=app.config["OPENAI_TIMEOUT_SECONDS"],
+    )
+    app.extensions["speech_service"] = SpeechService(
+        output_dir=Path(app.config["WAV_OUTPUT_DIR"]),
+        executable=app.config["ESPEAK_EXECUTABLE"],
+        voice=app.config["ESPEAK_VOICE"],
     )
     app.register_blueprint(api)
 

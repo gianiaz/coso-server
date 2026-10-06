@@ -11,6 +11,9 @@ services:
       OPENAI_INSTRUCTIONS: "${OPENAI_INSTRUCTIONS:-Rispondi in modo chiaro, accurato e conciso. Usa la lingua dell'utente.}"
       COSO_API_KEY: "${COSO_API_KEY:-}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      WAV_PUBLIC_BASE_URL: "${WAV_PUBLIC_BASE_URL:-}"
+    volumes:
+      - wav-data:/app/data/wav
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
@@ -18,3 +21,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  wav-data:

@@ -19,17 +19,28 @@ class FakeOpenAIService:
         return AskResult(text="Risposta di prova", model="test-model", response_id="resp_test")
 
 
+class FakeSpeechService:
+    def __init__(self):
+        self.calls = []
+
+    def generate(self, text):
+        self.calls.append(text)
+        return "ciao-sono-coso-come-stai.wav"
+
+
 @pytest.fixture()
-def app():
+def app(tmp_path):
     application = create_app(
         {
             "TESTING": True,
             "COSO_API_KEY": "secret",
             "MAX_IMAGE_BYTES": 1024,
             "MAX_CONTENT_LENGTH": 2048,
+            "WAV_OUTPUT_DIR": str(tmp_path),
         }
     )
     application.extensions["openai_service"] = FakeOpenAIService()
+    application.extensions["speech_service"] = FakeSpeechService()
     return application
 
 
@@ -46,6 +57,27 @@ def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json == {"service": "coso-server", "status": "ok"}
+
+
+def test_hello_generates_wav_command(client, app):
+    response = client.get("/hello", base_url="http://192.168.1.50:8000")
+    assert response.status_code == 200
+    assert response.json == {
+        "type": "command",
+        "wav": "http://192.168.1.50:8000/wav/ciao-sono-coso-come-stai.wav",
+    }
+    assert app.extensions["speech_service"].calls == ["Ciao, sono Coso, come stai?"]
+
+
+def test_serves_generated_wav(client, app):
+    wav_path = app.config["WAV_OUTPUT_DIR"] + "/test.wav"
+    with open(wav_path, "wb") as wav_file:
+        wav_file.write(b"RIFF-test")
+
+    response = client.get("/wav/test.wav")
+    assert response.status_code == 200
+    assert response.mimetype == "audio/wav"
+    assert response.data == b"RIFF-test"
 
 
 def test_requires_api_key(client):

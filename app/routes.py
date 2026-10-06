@@ -5,11 +5,14 @@ from dataclasses import dataclass
 from functools import wraps
 from urllib.parse import urlparse
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_from_directory, url_for
 
 from app.services.openai_service import ImageInput, OpenAIServiceError
+from app.services.speech_service import SpeechGenerationError
 
 api = Blueprint("api", __name__)
+
+HELLO_TEXT = "Ciao, sono Coso, come stai?"
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
@@ -114,6 +117,33 @@ def _parse_request() -> AskInput:
 @api.get("/health")
 def health():
     return jsonify(status="ok", service="coso-server")
+
+
+@api.get("/hello")
+def hello():
+    service = current_app.extensions["speech_service"]
+    try:
+        filename = service.generate(HELLO_TEXT)
+    except SpeechGenerationError:
+        current_app.logger.exception("Errore durante la generazione del file WAV")
+        return jsonify(error="speech_generation_error", message="Impossibile generare l'audio."), 500
+
+    path = url_for("api.wav_file", filename=filename)
+    public_base_url = current_app.config["WAV_PUBLIC_BASE_URL"].rstrip("/")
+    wav_url = f"{public_base_url}{path}" if public_base_url else url_for(
+        "api.wav_file", filename=filename, _external=True
+    )
+    return jsonify(type="command", wav=wav_url)
+
+
+@api.get("/wav/<filename>")
+def wav_file(filename: str):
+    return send_from_directory(
+        current_app.config["WAV_OUTPUT_DIR"],
+        filename,
+        mimetype="audio/wav",
+        conditional=True,
+    )
 
 
 @api.post("/api/v1/ask")
