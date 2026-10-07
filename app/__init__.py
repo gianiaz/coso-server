@@ -42,6 +42,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         WAV_PUBLIC_BASE_URL=os.getenv("WAV_PUBLIC_BASE_URL", ""),
         ESPEAK_EXECUTABLE=os.getenv("ESPEAK_EXECUTABLE", "espeak-ng"),
         ESPEAK_VOICE=os.getenv("ESPEAK_VOICE", "it"),
+        ESPEAK_SPEED=_int_env("ESPEAK_SPEED", 150),
     )
 
     if test_config:
@@ -64,6 +65,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         output_dir=Path(app.config["WAV_OUTPUT_DIR"]),
         executable=app.config["ESPEAK_EXECUTABLE"],
         voice=app.config["ESPEAK_VOICE"],
+        speed=app.config["ESPEAK_SPEED"],
     )
     app.register_blueprint(api)
 

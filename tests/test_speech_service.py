@@ -8,7 +8,9 @@ def test_slugify_italian_text():
 
 
 def test_generates_wav_with_espeak(tmp_path):
-    service = SpeechService(output_dir=tmp_path, executable="espeak-ng", voice="it")
+    service = SpeechService(
+        output_dir=tmp_path, executable="espeak-ng", voice="it", speed=150
+    )
     captured = {}
 
     def fake_run(command, **kwargs):
@@ -21,10 +23,12 @@ def test_generates_wav_with_espeak(tmp_path):
         filename = service.generate("Ciao, sono Coso, come stai?")
 
     assert filename == "ciao-sono-coso-come-stai.wav"
-    assert captured["command"][:5] == [
+    assert captured["command"][:-1] == [
         "espeak-ng",
         "-v",
         "it",
+        "-s",
+        "150",
         "Ciao, sono Coso, come stai?",
         "-w",
     ]

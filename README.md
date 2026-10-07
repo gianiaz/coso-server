@@ -43,6 +43,9 @@ curl http://localhost:8000/hello
 
 I file vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il server è dietro un reverse proxy, imposta `WAV_PUBLIC_BASE_URL` con l'origine pubblica, senza slash finale.
 
+La sintesi usa una velocità predefinita di 150 parole al minuto. Puoi regolarla
+con `ESPEAK_SPEED` nel file `.env` (valori più bassi producono una voce più lenta).
+
 ### Domanda con risposta vocale
 
 `POST /ask` accetta una domanda JSON, la inoltra a OpenAI e sintetizza la risposta in un file WAV:
@@ -116,6 +119,7 @@ Le variabili principali sono documentate in `.env.example`.
 - `OPENAI_INSTRUCTIONS`: istruzioni generali date al modello.
 - `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TIMEOUT_SECONDS`: limiti della chiamata upstream.
 - `MAX_REQUEST_BYTES`, `MAX_IMAGE_BYTES`, `MAX_TEXT_LENGTH`: limiti degli input.
+- `ESPEAK_EXECUTABLE`, `ESPEAK_VOICE`, `ESPEAK_SPEED`: comando, voce e velocità in parole al minuto della sintesi vocale.
 
 La chiave OpenAI non viene mai inviata al client. Le richieste usano `store=false`; Coso Server non salva localmente testi o immagini. Il collegamento a OpenAI usa il protocollo HTTP della Responses API direttamente, evitando dipendenze native pesanti sul Raspberry Pi.
 

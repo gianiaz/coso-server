@@ -40,7 +40,7 @@ espeak-ng --voices | grep -i it
 Puoi provare la sintesi vocale direttamente:
 
 ```bash
-espeak-ng -v it "Ciao, sono Coso, come stai?" -w /tmp/coso-test.wav
+espeak-ng -v it -s 150 "Ciao, sono Coso, come stai?" -w /tmp/coso-test.wav
 ls -lh /tmp/coso-test.wav
 ```
 
@@ -91,6 +91,7 @@ COSO_API_KEY=una-password-lunga-e-casuale
 WAV_OUTPUT_DIR=/home/pi/coso-server/data/wav
 ESPEAK_EXECUTABLE=espeak-ng
 ESPEAK_VOICE=it
+ESPEAK_SPEED=150
 
 # Imposta l'indirizzo raggiungibile dall'ESP, senza slash finale.
 WAV_PUBLIC_BASE_URL=http://192.168.1.50:8000
@@ -279,7 +280,7 @@ Verifica `espeak-ng` e i permessi:
 
 ```bash
 which espeak-ng
-espeak-ng -v it "Prova audio" -w /home/pi/coso-server/data/wav/prova.wav
+espeak-ng -v it -s 150 "Prova audio" -w /home/pi/coso-server/data/wav/prova.wav
 ls -lh /home/pi/coso-server/data/wav/prova.wav
 ```
 

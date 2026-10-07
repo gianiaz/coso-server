@@ -16,10 +16,13 @@ def slugify(value: str) -> str:
 
 
 class SpeechService:
-    def __init__(self, *, output_dir: Path, executable: str, voice: str) -> None:
+    def __init__(
+        self, *, output_dir: Path, executable: str, voice: str, speed: int
+    ) -> None:
         self.output_dir = output_dir
         self.executable = executable
         self.voice = voice
+        self.speed = speed
         self._generation_lock = Lock()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -30,7 +33,16 @@ class SpeechService:
         with self._generation_lock:
             try:
                 subprocess.run(
-                    [self.executable, "-v", self.voice, text, "-w", str(destination)],
+                    [
+                        self.executable,
+                        "-v",
+                        self.voice,
+                        "-s",
+                        str(self.speed),
+                        text,
+                        "-w",
+                        str(destination),
+                    ],
                     check=True,
                     capture_output=True,
                     timeout=30,

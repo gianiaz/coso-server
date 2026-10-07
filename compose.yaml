@@ -12,6 +12,9 @@ services:
       COSO_API_KEY: "${COSO_API_KEY:-}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       WAV_PUBLIC_BASE_URL: "${WAV_PUBLIC_BASE_URL:-}"
+      ESPEAK_EXECUTABLE: "${ESPEAK_EXECUTABLE:-espeak-ng}"
+      ESPEAK_VOICE: "${ESPEAK_VOICE:-it}"
+      ESPEAK_SPEED: "${ESPEAK_SPEED:-150}"
     volumes:
       - wav-data:/app/data/wav
     restart: unless-stopped
