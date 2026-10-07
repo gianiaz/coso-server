@@ -43,6 +43,25 @@ curl http://localhost:8000/hello
 
 I file vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il server è dietro un reverse proxy, imposta `WAV_PUBLIC_BASE_URL` con l'origine pubblica, senza slash finale.
 
+### Domanda con risposta vocale
+
+`POST /ask` accetta una domanda JSON, la inoltra a OpenAI e sintetizza la risposta in un file WAV:
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Perché il cielo è blu?"}'
+```
+
+La risposta ha lo stesso formato di `/hello`:
+
+```json
+{
+  "type": "command",
+  "wav": "http://localhost:8000/wav/risposta-generata.wav"
+}
+```
+
 ## API
 
 ### Testo

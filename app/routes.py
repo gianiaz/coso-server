@@ -114,16 +114,27 @@ def _parse_request() -> AskInput:
     return result
 
 
-@api.get("/health")
-def health():
-    return jsonify(status="ok", service="coso-server")
+def _parse_question() -> str:
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        raise ValidationError("Il body deve essere un oggetto JSON valido.")
+
+    question = body.get("question")
+    if not isinstance(question, str):
+        raise ValidationError("Il campo 'question' deve essere una stringa.")
+
+    question = question.strip()
+    if not question:
+        raise ValidationError("Il campo 'question' non può essere vuoto.")
+    if len(question) > current_app.config["MAX_TEXT_LENGTH"]:
+        raise ValidationError("La domanda supera la lunghezza massima consentita.")
+    return question
 
 
-@api.get("/hello")
-def hello():
+def _wav_command(text: str):
     service = current_app.extensions["speech_service"]
     try:
-        filename = service.generate(HELLO_TEXT)
+        filename = service.generate(text)
     except SpeechGenerationError:
         current_app.logger.exception("Errore durante la generazione del file WAV")
         return jsonify(error="speech_generation_error", message="Impossibile generare l'audio."), 500
@@ -134,6 +145,33 @@ def hello():
         "api.wav_file", filename=filename, _external=True
     )
     return jsonify(type="command", wav=wav_url)
+
+
+@api.get("/health")
+def health():
+    return jsonify(status="ok", service="coso-server")
+
+
+@api.get("/hello")
+def hello():
+    return _wav_command(HELLO_TEXT)
+
+
+@api.post("/ask")
+def ask_question():
+    try:
+        question = _parse_question()
+    except ValidationError as exc:
+        return jsonify(error="validation_error", message=str(exc)), 400
+
+    service = current_app.extensions["openai_service"]
+    try:
+        result = service.ask(text=question)
+    except OpenAIServiceError:
+        current_app.logger.exception("Errore durante la richiesta a OpenAI")
+        return jsonify(error="upstream_error", message="Il servizio AI non è disponibile."), 502
+
+    return _wav_command(result.text)
 
 
 @api.get("/wav/<filename>")
