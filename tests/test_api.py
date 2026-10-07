@@ -3,7 +3,7 @@ from io import BytesIO
 
 import pytest
 
-from app import create_app
+from app import DEFAULT_OPENAI_INSTRUCTIONS, create_app
 from app.services.openai_service import AskResult, OpenAIServiceError
 
 
@@ -51,6 +51,16 @@ def client(app):
 
 def auth():
     return {"X-API-Key": "secret"}
+
+
+def test_default_openai_instructions_describe_coso(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENAI_INSTRUCTIONS", raising=False)
+    application = create_app({"TESTING": True, "WAV_OUTPUT_DIR": str(tmp_path)})
+
+    assert application.config["OPENAI_INSTRUCTIONS"] == DEFAULT_OPENAI_INSTRUCTIONS
+    assert "Ti chiami Coso" in DEFAULT_OPENAI_INSTRUCTIONS
+    assert "Giovanni" in DEFAULT_OPENAI_INSTRUCTIONS
+    assert "Riccardo e Letizia" in DEFAULT_OPENAI_INSTRUCTIONS
 
 
 def test_health(client):

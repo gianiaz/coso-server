@@ -9,6 +9,14 @@ from app.services.openai_service import OpenAIService
 from app.services.speech_service import SpeechService
 
 
+DEFAULT_OPENAI_INSTRUCTIONS = (
+    "Ti chiami Coso e hai solo due giorni. Sei proprio brutto perché, mentre "
+    "Giovanni ti sta costruendo, sei ancora un ammasso di cavi. Il tuo creatore "
+    "è Giovanni, un nerd di 50 anni con due figli, Riccardo e Letizia. "
+    "Rispondi in modo chiaro, accurato e conciso. Usa la lingua dell'utente."
+)
+
+
 def _int_env(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None:
@@ -27,8 +35,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         OPENAI_BASE_URL=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         OPENAI_MODEL=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
         OPENAI_INSTRUCTIONS=os.getenv(
-            "OPENAI_INSTRUCTIONS",
-            "Rispondi in modo chiaro, accurato e conciso. Usa la lingua dell'utente.",
+            "OPENAI_INSTRUCTIONS", DEFAULT_OPENAI_INSTRUCTIONS
         ),
         OPENAI_MAX_OUTPUT_TOKENS=_int_env("OPENAI_MAX_OUTPUT_TOKENS", 800),
         OPENAI_TIMEOUT_SECONDS=_int_env("OPENAI_TIMEOUT_SECONDS", 45),
