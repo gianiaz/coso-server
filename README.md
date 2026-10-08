@@ -69,6 +69,9 @@ La risposta ha lo stesso formato di `/hello`:
 
 ## API
 
+Il contratto completo delle route è disponibile in [`openapi.yaml`](openapi.yaml)
+in formato OpenAPI 3.1.
+
 ### Testo
 
 ```bash

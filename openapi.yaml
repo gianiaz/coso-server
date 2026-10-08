@@ -1,0 +1,332 @@
+openapi: 3.1.0
+info:
+  title: Coso Server API
+  version: 1.0.0
+  description: >-
+    API Flask per trascrizione vocale, risposte OpenAI, sintesi WAV e richieste
+    testuali o con immagini. I limiti indicati sono i valori predefiniti e
+    possono essere modificati tramite le variabili d'ambiente del server.
+servers:
+  - url: http://192.168.1.104:8000
+    description: Raspberry Pi nella rete locale di Buddy
+  - url: http://localhost:8000
+    description: Server locale di sviluppo
+tags:
+  - name: Stato
+  - name: Voce
+  - name: API
+
+paths:
+  /health:
+    get:
+      tags: [Stato]
+      operationId: getHealth
+      summary: Verifica lo stato del servizio
+      responses:
+        "200":
+          description: Servizio disponibile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                service: coso-server
+
+  /hello:
+    get:
+      tags: [Voce]
+      operationId: getHello
+      summary: Genera il saluto iniziale come comando WAV
+      description: >-
+        Sintetizza il saluto predefinito e restituisce l'URL assoluto del file
+        audio da scaricare e riprodurre.
+      responses:
+        "200":
+          description: Comando audio generato.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WavCommand"
+        "500":
+          $ref: "#/components/responses/SpeechGenerationError"
+
+  /ask:
+    post:
+      tags: [Voce]
+      operationId: askWithAudio
+      summary: Invia una domanda vocale e ottiene un comando WAV
+      description: >-
+        Accetta un WAV PCM non compresso, mono, 16 bit little-endian, 16000 Hz
+        e di durata superiore a 0,1 secondi. Il limite predefinito del body è
+        2 MiB. Il server trascrive l'audio, genera la risposta e ne sintetizza
+        un nuovo WAV. Questa route non usa X-API-Key.
+      requestBody:
+        required: true
+        content:
+          audio/wav:
+            schema:
+              type: string
+              format: binary
+          audio/x-wav:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: >-
+            Comando contenente l'URL assoluto del WAV. Effettuare quindi una
+            richiesta GET all'URL contenuto in `wav`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WavCommand"
+              example:
+                type: command
+                wav: http://192.168.1.104:8000/wav/risposta-generata.wav
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/SpeechGenerationError"
+        "502":
+          description: Trascrizione o servizio AI non disponibile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                transcription:
+                  value:
+                    error: transcription_error
+                    message: Impossibile trascrivere l'audio.
+                ai:
+                  value:
+                    error: upstream_error
+                    message: Il servizio AI non è disponibile.
+
+  /wav/{filename}:
+    get:
+      tags: [Voce]
+      operationId: getWav
+      summary: Scarica un file WAV generato
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          description: Nome ricevuto nell'URL del comando WAV.
+          schema:
+            type: string
+            pattern: "^[^/]+\\.wav$"
+      responses:
+        "200":
+          description: File audio completo.
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Porzione del file richiesta tramite header Range.
+          headers:
+            Content-Range:
+              schema:
+                type: string
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/ask:
+    post:
+      tags: [API]
+      operationId: askWithTextOrImage
+      summary: Invia testo e/o un'immagine
+      description: >-
+        Accetta JSON oppure multipart/form-data. Se COSO_API_KEY è configurata,
+        l'header X-API-Key è obbligatorio; con una chiave server vuota il controllo
+        è disabilitato. Il testo può contenere al massimo 20000 caratteri e
+        l'immagine al massimo 5 MiB con la configurazione predefinita.
+      security:
+        - ApiKeyAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JsonAskRequest"
+            examples:
+              text:
+                value:
+                  text: Perché il cielo è blu?
+              imageUrl:
+                value:
+                  text: Che cosa vedi?
+                  image_url: https://example.com/foto.jpg
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/MultipartAskRequest"
+      responses:
+        "200":
+          description: Risposta del modello.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AskResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: API key mancante o non valida.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: unauthorized
+                message: API key mancante o non valida.
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status, service]
+      properties:
+        status:
+          type: string
+          const: ok
+        service:
+          type: string
+          const: coso-server
+
+    WavCommand:
+      type: object
+      additionalProperties: false
+      required: [type, wav]
+      properties:
+        type:
+          type: string
+          const: command
+        wav:
+          type: string
+          format: uri
+          description: URL assoluto del WAV da scaricare.
+
+    JsonAskRequest:
+      type: object
+      additionalProperties: false
+      anyOf:
+        - required: [text]
+        - required: [image_url]
+        - required: [image_base64, image_mime_type]
+      not:
+        required: [image_url, image_base64]
+      dependentRequired:
+        image_base64: [image_mime_type]
+      properties:
+        text:
+          type: string
+          maxLength: 20000
+        image_url:
+          type: string
+          format: uri
+          pattern: "^https?://"
+        image_base64:
+          type: string
+          contentEncoding: base64
+        image_mime_type:
+          $ref: "#/components/schemas/ImageMimeType"
+
+    MultipartAskRequest:
+      type: object
+      additionalProperties: false
+      anyOf:
+        - required: [text]
+        - required: [image]
+      properties:
+        text:
+          type: string
+          maxLength: 20000
+        image:
+          type: string
+          format: binary
+          description: Immagine JPEG, PNG, WEBP o GIF.
+
+    ImageMimeType:
+      type: string
+      enum:
+        - image/jpeg
+        - image/png
+        - image/webp
+        - image/gif
+
+    AskResponse:
+      type: object
+      additionalProperties: false
+      required: [answer, model, response_id]
+      properties:
+        answer:
+          type: string
+        model:
+          type: string
+        response_id:
+          type: string
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+  responses:
+    ValidationError:
+      description: Richiesta non valida.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: validation_error
+            message: Formato della richiesta non valido.
+    SpeechGenerationError:
+      description: Impossibile generare il file WAV.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: speech_generation_error
+            message: Impossibile generare l'audio.
+    UpstreamError:
+      description: Servizio AI upstream non disponibile.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: upstream_error
+            message: Il servizio AI non è disponibile.
+    NotFound:
+      description: Risorsa non trovata.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: not_found
+            message: Endpoint non trovato.
