@@ -6,7 +6,9 @@ from flask import Flask, jsonify
 
 from app.routes import api
 from app.services.openai_service import OpenAIService
+from app.services.memory_service import MemoryService
 from app.services.speech_service import SpeechService
+from app.services.transcription_service import TranscriptionService
 
 
 DEFAULT_OPENAI_INSTRUCTIONS = (
@@ -34,6 +36,15 @@ def create_app(test_config: dict | None = None) -> Flask:
         OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", ""),
         OPENAI_BASE_URL=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         OPENAI_MODEL=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+        MEMORY_ROUTER_MODEL=os.getenv("MEMORY_ROUTER_MODEL", "gpt-4o-mini"),
+        MEMORY_DB_PATH=os.getenv(
+            "MEMORY_DB_PATH",
+            str(Path(__file__).resolve().parent.parent / "data" / "memory.sqlite3"),
+        ),
+        MEMORY_RESULT_LIMIT=_int_env("MEMORY_RESULT_LIMIT", 6),
+        OPENAI_TRANSCRIPTION_MODEL=os.getenv(
+            "OPENAI_TRANSCRIPTION_MODEL", "gpt-4o-mini-transcribe"
+        ),
         OPENAI_INSTRUCTIONS=os.getenv(
             "OPENAI_INSTRUCTIONS", DEFAULT_OPENAI_INSTRUCTIONS
         ),
@@ -41,6 +52,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         OPENAI_TIMEOUT_SECONDS=_int_env("OPENAI_TIMEOUT_SECONDS", 45),
         MAX_CONTENT_LENGTH=_int_env("MAX_REQUEST_BYTES", 8 * 1024 * 1024),
         MAX_IMAGE_BYTES=_int_env("MAX_IMAGE_BYTES", 5 * 1024 * 1024),
+        MAX_AUDIO_BYTES=_int_env("MAX_AUDIO_BYTES", 2 * 1024 * 1024),
         MAX_TEXT_LENGTH=_int_env("MAX_TEXT_LENGTH", 20_000),
         WAV_OUTPUT_DIR=os.getenv(
             "WAV_OUTPUT_DIR",
@@ -67,6 +79,19 @@ def create_app(test_config: dict | None = None) -> Flask:
         instructions=app.config["OPENAI_INSTRUCTIONS"],
         max_output_tokens=app.config["OPENAI_MAX_OUTPUT_TOKENS"],
         timeout=app.config["OPENAI_TIMEOUT_SECONDS"],
+    )
+    app.extensions["memory_service"] = MemoryService(
+        database_path=app.config["MEMORY_DB_PATH"],
+        api_key=app.config["OPENAI_API_KEY"],
+        base_url=app.config["OPENAI_BASE_URL"],
+        model=app.config["MEMORY_ROUTER_MODEL"],
+        timeout=app.config["OPENAI_TIMEOUT_SECONDS"],
+        result_limit=app.config["MEMORY_RESULT_LIMIT"],
+    )
+    app.extensions["transcription_service"] = TranscriptionService(
+        api_key=app.config["OPENAI_API_KEY"],
+        base_url=app.config["OPENAI_BASE_URL"],
+        model=app.config["OPENAI_TRANSCRIPTION_MODEL"],
     )
     app.extensions["speech_service"] = SpeechService(
         output_dir=Path(app.config["WAV_OUTPUT_DIR"]),

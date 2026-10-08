@@ -5,7 +5,7 @@ Questa guida descrive l'installazione di Coso Server direttamente su Raspberry P
 ## 1. Requisiti
 
 - Raspberry Pi con Raspberry Pi OS e accesso alla rete.
-- Python 3.9 o successivo.
+- Python 3.10 o successivo (Raspberry Pi OS Bookworm include Python 3.11).
 - Una API key OpenAI.
 - Accesso al terminale del Raspberry, direttamente oppure tramite SSH.
 
@@ -28,7 +28,7 @@ Se il tuo nome utente è diverso, sostituisci `pi` nei percorsi e nel servizio `
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-pip python3-venv espeak-ng
+sudo apt install -y git python3 python3-pip python3-venv espeak-ng ffmpeg
 ```
 
 Verifica che la voce italiana sia disponibile:
@@ -85,6 +85,7 @@ Configurazione minima consigliata:
 OPENAI_API_KEY=la-tua-api-key-openai
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4.1-mini
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 
 COSO_API_KEY=una-password-lunga-e-casuale
 
@@ -173,6 +174,15 @@ curl -X POST http://127.0.0.1:8000/api/v1/ask \
   -H "Content-Type: application/json" \
   -H "X-API-Key: una-password-lunga-e-casuale" \
   -d '{"text":"Ciao, rispondi con una frase breve."}'
+```
+
+Per provare la stessa pipeline vocale usata dall'ESP32, prepara un WAV PCM mono,
+16 bit, 16 kHz e invialo come body della richiesta:
+
+```bash
+curl -X POST http://127.0.0.1:8000/ask \
+  -H "Content-Type: audio/wav" \
+  --data-binary @domanda.wav
 ```
 
 ## 8. Avvio automatico con systemd

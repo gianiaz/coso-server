@@ -1,20 +1,24 @@
 import base64
 import binascii
 import hmac
+import wave
 from dataclasses import dataclass
 from functools import wraps
+from io import BytesIO
 from urllib.parse import urlparse
 
 from flask import Blueprint, current_app, jsonify, request, send_from_directory, url_for
 
 from app.services.openai_service import ImageInput, OpenAIServiceError
 from app.services.speech_service import SpeechGenerationError
+from app.services.transcription_service import TranscriptionServiceError
 
 api = Blueprint("api", __name__)
 
 HELLO_TEXT = "Ciao, sono Coso, come stai?"
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+ALLOWED_AUDIO_TYPES = {"audio/wav", "audio/x-wav"}
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,16 @@ class AskInput:
 
 class ValidationError(ValueError):
     pass
+
+
+def _ask_openai(*, text: str, image: ImageInput | None = None):
+    memory = current_app.extensions["memory_service"]
+    memory_result = memory.process(text)
+    memory_context = memory.format_context(memory_result.contexts)
+    service = current_app.extensions["openai_service"]
+    if memory_context:
+        return service.ask(text=text, image=image, memory_context=memory_context)
+    return service.ask(text=text, image=image)
 
 
 def require_api_key(view):
@@ -114,21 +128,37 @@ def _parse_request() -> AskInput:
     return result
 
 
-def _parse_question() -> str:
-    body = request.get_json(silent=True)
-    if not isinstance(body, dict):
-        raise ValidationError("Il body deve essere un oggetto JSON valido.")
+def _parse_audio_question() -> bytes:
+    if request.mimetype not in ALLOWED_AUDIO_TYPES:
+        raise ValidationError("Usa Content-Type audio/wav.")
 
-    question = body.get("question")
-    if not isinstance(question, str):
-        raise ValidationError("Il campo 'question' deve essere una stringa.")
+    audio = request.get_data(cache=False)
+    if not audio:
+        raise ValidationError("L'audio è vuoto.")
+    if len(audio) > current_app.config["MAX_AUDIO_BYTES"]:
+        raise ValidationError("L'audio supera la dimensione massima consentita.")
 
-    question = question.strip()
-    if not question:
-        raise ValidationError("Il campo 'question' non può essere vuoto.")
-    if len(question) > current_app.config["MAX_TEXT_LENGTH"]:
-        raise ValidationError("La domanda supera la lunghezza massima consentita.")
-    return question
+    try:
+        with wave.open(BytesIO(audio), "rb") as wav:
+            frame_count = wav.getnframes()
+            frames = wav.readframes(frame_count)
+            valid = (
+                wav.getcomptype() == "NONE"
+                and wav.getnchannels() == 1
+                and wav.getsampwidth() == 2
+                and wav.getframerate() == 16_000
+                and frame_count > 1_600
+                and len(frames) == frame_count * 2
+            )
+    except (EOFError, wave.Error):
+        valid = False
+
+    if not valid:
+        raise ValidationError(
+            "Formato audio non valido: usa WAV PCM mono, 16 bit, 16000 Hz "
+            "e una durata superiore a 0,1 secondi."
+        )
+    return audio
 
 
 def _wav_command(text: str):
@@ -160,13 +190,21 @@ def hello():
 @api.post("/ask")
 def ask_question():
     try:
-        question = _parse_question()
+        audio = _parse_audio_question()
     except ValidationError as exc:
         return jsonify(error="validation_error", message=str(exc)), 400
 
-    service = current_app.extensions["openai_service"]
+    transcription_service = current_app.extensions["transcription_service"]
     try:
-        result = service.ask(text=question)
+        question = transcription_service.transcribe(audio)
+    except TranscriptionServiceError:
+        current_app.logger.exception("Errore durante la trascrizione audio")
+        return jsonify(
+            error="transcription_error", message="Impossibile trascrivere l'audio."
+        ), 502
+
+    try:
+        result = _ask_openai(text=question)
     except OpenAIServiceError:
         current_app.logger.exception("Errore durante la richiesta a OpenAI")
         return jsonify(error="upstream_error", message="Il servizio AI non è disponibile."), 502
@@ -192,9 +230,8 @@ def ask():
     except ValidationError as exc:
         return jsonify(error="validation_error", message=str(exc)), 400
 
-    service = current_app.extensions["openai_service"]
     try:
-        result = service.ask(text=data.text, image=data.image)
+        result = _ask_openai(text=data.text, image=data.image)
     except OpenAIServiceError:
         current_app.logger.exception("Errore durante la richiesta a OpenAI")
         return jsonify(error="upstream_error", message="Il servizio AI non è disponibile."), 502

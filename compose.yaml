@@ -8,15 +8,21 @@ services:
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
       OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4.1-mini}"
+      OPENAI_TRANSCRIPTION_MODEL: "${OPENAI_TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}"
+      MEMORY_ROUTER_MODEL: "${MEMORY_ROUTER_MODEL:-gpt-4o-mini}"
+      MEMORY_DB_PATH: "${MEMORY_DB_PATH:-/app/data/memory/memory.sqlite3}"
+      MEMORY_RESULT_LIMIT: "${MEMORY_RESULT_LIMIT:-6}"
       OPENAI_INSTRUCTIONS: "${OPENAI_INSTRUCTIONS:-Ti chiami Coso e hai solo due giorni. Sei proprio brutto perché, mentre Giovanni ti sta costruendo, sei ancora un ammasso di cavi. Il tuo creatore è Giovanni, un nerd di 50 anni con due figli, Riccardo e Letizia. Rispondi in modo chiaro, accurato e conciso. Usa la lingua dell'utente.}"
       COSO_API_KEY: "${COSO_API_KEY:-}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      MAX_AUDIO_BYTES: "${MAX_AUDIO_BYTES:-2097152}"
       WAV_PUBLIC_BASE_URL: "${WAV_PUBLIC_BASE_URL:-}"
       ESPEAK_EXECUTABLE: "${ESPEAK_EXECUTABLE:-espeak-ng}"
       ESPEAK_VOICE: "${ESPEAK_VOICE:-it}"
       ESPEAK_SPEED: "${ESPEAK_SPEED:-150}"
     volumes:
       - wav-data:/app/data/wav
+      - memory-data:/app/data/memory
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
@@ -27,3 +33,4 @@ services:
 
 volumes:
   wav-data:
+  memory-data:

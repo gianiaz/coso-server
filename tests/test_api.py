@@ -1,10 +1,12 @@
 import base64
+import wave
 from io import BytesIO
 
 import pytest
 
 from app import DEFAULT_OPENAI_INSTRUCTIONS, create_app
 from app.services.openai_service import AskResult, OpenAIServiceError
+from app.services.transcription_service import TranscriptionServiceError
 
 
 class FakeOpenAIService:
@@ -28,6 +30,28 @@ class FakeSpeechService:
         return "ciao-sono-coso-come-stai.wav"
 
 
+class FakeTranscriptionService:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.calls = []
+
+    def transcribe(self, audio):
+        self.calls.append(audio)
+        if self.fail:
+            raise TranscriptionServiceError("boom")
+        return "Perché il cielo è blu?"
+
+
+def make_wav(*, channels=1, sample_width=2, sample_rate=16_000, frames=3200):
+    output = BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(channels)
+        wav.setsampwidth(sample_width)
+        wav.setframerate(sample_rate)
+        wav.writeframes(b"\x00" * frames * channels * sample_width)
+    return output.getvalue()
+
+
 @pytest.fixture()
 def app(tmp_path):
     application = create_app(
@@ -35,12 +59,13 @@ def app(tmp_path):
             "TESTING": True,
             "COSO_API_KEY": "secret",
             "MAX_IMAGE_BYTES": 1024,
-            "MAX_CONTENT_LENGTH": 2048,
+            "MAX_CONTENT_LENGTH": 20_000,
             "WAV_OUTPUT_DIR": str(tmp_path),
         }
     )
     application.extensions["openai_service"] = FakeOpenAIService()
     application.extensions["speech_service"] = FakeSpeechService()
+    application.extensions["transcription_service"] = FakeTranscriptionService()
     return application
 
 
@@ -80,9 +105,11 @@ def test_hello_generates_wav_command(client, app):
 
 
 def test_ask_generates_wav_from_openai_answer(client, app):
+    audio = make_wav()
     response = client.post(
         "/ask",
-        json={"question": "Perché il cielo è blu?"},
+        data=audio,
+        content_type="audio/wav",
         base_url="http://192.168.1.50:8000",
     )
 
@@ -91,16 +118,36 @@ def test_ask_generates_wav_from_openai_answer(client, app):
         "type": "command",
         "wav": "http://192.168.1.50:8000/wav/ciao-sono-coso-come-stai.wav",
     }
+    assert app.extensions["transcription_service"].calls == [audio]
     assert app.extensions["openai_service"].calls == [("Perché il cielo è blu?", None)]
     assert app.extensions["speech_service"].calls == ["Risposta di prova"]
 
 
 @pytest.mark.parametrize(
-    "payload",
-    [None, {}, {"question": ""}, {"question": "   "}, {"question": 42}],
+    ("payload", "content_type"),
+    [
+        (b"", "audio/wav"),
+        (b"not-wav", "audio/wav"),
+        (make_wav()[:-20], "audio/wav"),
+        (make_wav(frames=1_600), "audio/wav"),
+        (make_wav(channels=2), "audio/wav"),
+        (make_wav(sample_width=1), "audio/wav"),
+        (make_wav(sample_rate=8_000), "audio/wav"),
+        (make_wav(), "application/octet-stream"),
+    ],
+    ids=[
+        "empty",
+        "not-wav",
+        "truncated",
+        "too-short",
+        "stereo",
+        "8-bit",
+        "8-khz",
+        "wrong-content-type",
+    ],
 )
-def test_ask_rejects_invalid_question(client, payload):
-    response = client.post("/ask", json=payload)
+def test_ask_rejects_invalid_audio(client, payload, content_type):
+    response = client.post("/ask", data=payload, content_type=content_type)
 
     assert response.status_code == 400
     assert response.json["error"] == "validation_error"
@@ -109,10 +156,20 @@ def test_ask_rejects_invalid_question(client, payload):
 def test_ask_maps_openai_errors(client, app):
     app.extensions["openai_service"] = FakeOpenAIService(fail=True)
 
-    response = client.post("/ask", json={"question": "Ciao"})
+    response = client.post("/ask", data=make_wav(), content_type="audio/wav")
 
     assert response.status_code == 502
     assert response.json["error"] == "upstream_error"
+
+
+def test_ask_maps_transcription_errors(client, app):
+    app.extensions["transcription_service"] = FakeTranscriptionService(fail=True)
+
+    response = client.post("/ask", data=make_wav(), content_type="audio/wav")
+
+    assert response.status_code == 502
+    assert response.json["error"] == "transcription_error"
+    assert app.extensions["openai_service"].calls == []
 
 
 def test_serves_generated_wav(client, app):

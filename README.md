@@ -1,6 +1,6 @@
 # Coso Server
 
-Piccolo servizio Flask pensato per ricevere testo e immagini e inoltrarli alla Responses API di OpenAI. È eseguibile con Docker Compose in locale e con Gunicorn su un Raspberry Pi.
+Piccolo servizio Flask pensato per ricevere testo e immagini e inoltrarli alla Responses API di OpenAI tramite LangChain. È eseguibile con Docker Compose in locale e con Gunicorn su un Raspberry Pi.
 
 Per l'installazione completa su Raspberry Pi senza Docker, la configurazione di `systemd`, gli aggiornamenti e il troubleshooting, consulta [setup.md](setup.md).
 
@@ -46,14 +46,16 @@ I file vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il s
 La sintesi usa una velocità predefinita di 150 parole al minuto. Puoi regolarla
 con `ESPEAK_SPEED` nel file `.env` (valori più bassi producono una voce più lenta).
 
-### Domanda con risposta vocale
+### Domanda vocale con risposta vocale
 
-`POST /ask` accetta una domanda JSON, la inoltra a OpenAI e sintetizza la risposta in un file WAV:
+`POST /ask` accetta direttamente un WAV registrato dal microfono, lo trascrive con
+`OpenAIWhisperParser`, inoltra il testo al modello e sintetizza la risposta in un
+nuovo file WAV. Il formato richiesto è PCM mono, 16 bit little-endian, 16 kHz.
 
 ```bash
 curl -X POST http://localhost:8000/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question":"Perché il cielo è blu?"}'
+  -H "Content-Type: audio/wav" \
+  --data-binary @domanda.wav
 ```
 
 La risposta ha lo stesso formato di `/hello`:
@@ -108,6 +110,22 @@ Risposta:
 }
 ```
 
+## Memoria a lungo termine
+
+Ogni messaggio testuale passa prima attraverso un router leggero con output
+strutturato. Il router distingue i fatti durevoli (per esempio componenti di un
+progetto, configurazioni domotiche o informazioni familiari) dalle interazioni
+transitorie. Solo i fatti durevoli vengono sintetizzati e salvati in SQLite con
+categoria, tag e timestamp.
+
+Quando una domanda richiede informazioni precedenti, il router recupera fino a
+`MEMORY_RESULT_LIMIT` fatti per categoria, tag o parola chiave. Questi vengono
+aggiunti come contesto di sistema alla risposta. Non sono usati database vettoriali
+e il server non mantiene una connessione SQLite residente in memoria.
+
+Nel container il database è conservato nel volume Docker `memory-data`. In una
+installazione diretta il percorso predefinito è `data/memory.sqlite3`.
+
 ## Configurazione
 
 Le variabili principali sono documentate in `.env.example`.
@@ -115,13 +133,22 @@ Le variabili principali sono documentate in `.env.example`.
 - `OPENAI_API_KEY`: obbligatoria per le richieste AI.
 - `OPENAI_BASE_URL`: base URL del servizio; normalmente non va modificata.
 - `OPENAI_MODEL`: modello usato; predefinito `gpt-4.1-mini`.
+- `OPENAI_TRANSCRIPTION_MODEL`: modello speech-to-text; predefinito `gpt-4o-mini-transcribe`.
+- `MEMORY_ROUTER_MODEL`: modello economico per classificazione ed estrazione; predefinito `gpt-4o-mini`.
+- `MEMORY_DB_PATH`: percorso del database SQLite persistente.
+- `MEMORY_RESULT_LIMIT`: massimo numero di ricordi iniettati in una risposta; predefinito `6`.
 - `COSO_API_KEY`: protegge l'endpoint tramite header `X-API-Key`. In produzione non lasciarla vuota.
 - `OPENAI_INSTRUCTIONS`: istruzioni generali date al modello.
 - `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TIMEOUT_SECONDS`: limiti della chiamata upstream.
-- `MAX_REQUEST_BYTES`, `MAX_IMAGE_BYTES`, `MAX_TEXT_LENGTH`: limiti degli input.
+- `MAX_REQUEST_BYTES`, `MAX_AUDIO_BYTES`, `MAX_IMAGE_BYTES`, `MAX_TEXT_LENGTH`: limiti degli input.
 - `ESPEAK_EXECUTABLE`, `ESPEAK_VOICE`, `ESPEAK_SPEED`: comando, voce e velocità in parole al minuto della sintesi vocale.
 
-La chiave OpenAI non viene mai inviata al client. Le richieste usano `store=false`; Coso Server non salva localmente testi o immagini. Il collegamento a OpenAI usa il protocollo HTTP della Responses API direttamente, evitando dipendenze native pesanti sul Raspberry Pi.
+La chiave OpenAI non viene mai inviata al client e le richieste upstream usano
+`store=false`. Coso Server non conserva immagini o registrazioni; salva localmente
+solo le sintesi che il router identifica come memoria durevole. Le domande vocali
+vengono trascritte tramite `OpenAIWhisperParser` (`langchain-community`); il testo
+passa quindi a `ChatOpenAI` (`langchain-openai`) usando la Responses API. Il parser
+audio richiede `ffmpeg`, già incluso nell'immagine Docker.
 
 ## Test
 
