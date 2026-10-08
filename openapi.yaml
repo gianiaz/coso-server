@@ -51,6 +51,75 @@ paths:
         "500":
           $ref: "#/components/responses/SpeechGenerationError"
 
+  /wakeup:
+    get:
+      tags: [Voce]
+      operationId: getWakeup
+      summary: Sceglie un saluto WAV casuale al risveglio
+      description: >-
+        Sceglie a ogni richiesta un file .wav dalla sottocartella wakeup di
+        WAV_OUTPUT_DIR (data/wav/wakeup per impostazione predefinita).
+        Restituisce lo stesso comando di /hello, senza sintesi vocale.
+        Non richiede X-API-Key. Il comando non deve essere memorizzato in cache.
+      responses:
+        "200":
+          description: Comando contenente l'URL assoluto del saluto da scaricare.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WavCommand"
+              example:
+                type: command
+                wav: http://192.168.1.104:8000/wav/wakeup/dimmi-tutto.wav
+        "503":
+          description: Nessun file WAV disponibile nella cartella dei saluti.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: wakeup_unavailable
+                message: Nessun saluto WAV disponibile.
+
+  /wav/wakeup/{filename}:
+    get:
+      tags: [Voce]
+      operationId: getWakeupWav
+      summary: Scarica un saluto WAV preregistrato
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[^/]+\\.wav$"
+      responses:
+        "200":
+          description: File audio completo.
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Porzione del file richiesta tramite header Range.
+          headers:
+            Content-Range:
+              schema:
+                type: string
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /ask:
     post:
       tags: [Voce]

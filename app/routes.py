@@ -1,10 +1,12 @@
 import base64
 import binascii
 import hmac
+import random
 import wave
 from dataclasses import dataclass
 from functools import wraps
 from io import BytesIO
+from pathlib import Path
 from urllib.parse import urlparse
 
 from flask import Blueprint, current_app, jsonify, request, send_from_directory, url_for
@@ -169,10 +171,14 @@ def _wav_command(text: str):
         current_app.logger.exception("Errore durante la generazione del file WAV")
         return jsonify(error="speech_generation_error", message="Impossibile generare l'audio."), 500
 
-    path = url_for("api.wav_file", filename=filename)
+    return _wav_file_command("api.wav_file", filename)
+
+
+def _wav_file_command(endpoint: str, filename: str):
+    path = url_for(endpoint, filename=filename)
     public_base_url = current_app.config["WAV_PUBLIC_BASE_URL"].rstrip("/")
     wav_url = f"{public_base_url}{path}" if public_base_url else url_for(
-        "api.wav_file", filename=filename, _external=True
+        endpoint, filename=filename, _external=True
     )
     return jsonify(type="command", wav=wav_url)
 
@@ -185,6 +191,29 @@ def health():
 @api.get("/hello")
 def hello():
     return _wav_command(HELLO_TEXT)
+
+
+@api.get("/wakeup")
+def wakeup():
+    directory = Path(current_app.config["WAV_OUTPUT_DIR"]) / "wakeup"
+    files = sorted(path.name for path in directory.glob("*.wav") if path.is_file())
+    if not files:
+        return jsonify(
+            error="wakeup_unavailable", message="Nessun saluto WAV disponibile."
+        ), 503
+    response = _wav_file_command("api.wakeup_wav_file", random.choice(files))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@api.get("/wav/wakeup/<filename>")
+def wakeup_wav_file(filename: str):
+    return send_from_directory(
+        Path(current_app.config["WAV_OUTPUT_DIR"]) / "wakeup",
+        filename,
+        mimetype="audio/wav",
+        conditional=True,
+    )
 
 
 @api.post("/ask")

@@ -1,6 +1,7 @@
 import base64
 import wave
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 
@@ -102,6 +103,61 @@ def test_hello_generates_wav_command(client, app):
         "wav": "http://192.168.1.50:8000/wav/ciao-sono-coso-come-stai.wav",
     }
     assert app.extensions["speech_service"].calls == ["Ciao, sono Coso, come stai?"]
+
+
+@pytest.mark.parametrize("public_base_url", ["", "https://coso.example/"])
+def test_wakeup_selects_existing_wav(client, app, monkeypatch, public_base_url):
+    directory = Path(app.config["WAV_OUTPUT_DIR"]) / "wakeup"
+    directory.mkdir()
+    audio = make_wav()
+    for name in ("ciao.wav", "dimmi.wav"):
+        (directory / name).write_bytes(audio)
+    (directory / "notes.txt").write_text("ignored")
+    (directory / "folder.wav").mkdir()
+    app.config["WAV_PUBLIC_BASE_URL"] = public_base_url
+    selections = iter(["ciao.wav", "dimmi.wav"])
+
+    def choose(files):
+        assert files == ["ciao.wav", "dimmi.wav"]
+        return next(selections)
+
+    monkeypatch.setattr("app.routes.random.choice", choose)
+    origin = public_base_url.rstrip("/") or "http://192.168.1.50:8000"
+    for name in ("ciao.wav", "dimmi.wav"):
+        response = client.get("/wakeup", base_url="http://192.168.1.50:8000")
+        assert response.status_code == 200
+        assert response.json == {
+            "type": "command",
+            "wav": f"{origin}/wav/wakeup/{name}",
+        }
+        assert response.headers["Cache-Control"] == "no-store"
+        download = client.get(response.json["wav"])
+        assert download.status_code == 200
+        assert download.mimetype == "audio/wav"
+        assert download.data == audio
+
+    assert app.extensions["speech_service"].calls == []
+    assert app.extensions["openai_service"].calls == []
+
+
+@pytest.mark.parametrize("directory_exists", [False, True])
+def test_wakeup_without_wav_returns_json_error(client, app, directory_exists):
+    if directory_exists:
+        (Path(app.config["WAV_OUTPUT_DIR"]) / "wakeup").mkdir()
+    response = client.get("/wakeup")
+    assert response.status_code == 503
+    assert response.json == {
+        "error": "wakeup_unavailable",
+        "message": "Nessun saluto WAV disponibile.",
+    }
+
+
+def test_wakeup_download_missing_or_outside_directory(client, app):
+    (Path(app.config["WAV_OUTPUT_DIR"]) / "private.wav").write_bytes(make_wav())
+    for url in ("/wav/wakeup/missing.wav", "/wav/wakeup/../private.wav"):
+        response = client.get(url)
+        assert response.status_code == 404
+        assert response.json["error"] == "not_found"
 
 
 def test_ask_generates_wav_from_openai_answer(client, app):

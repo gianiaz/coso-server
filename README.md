@@ -46,6 +46,24 @@ I file vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il s
 La sintesi usa una velocità predefinita di 150 parole al minuto. Puoi regolarla
 con `ESPEAK_SPEED` nel file `.env` (valori più bassi producono una voce più lenta).
 
+### Saluto casuale al risveglio
+
+`GET /wakeup` sceglie casualmente uno dei file `.wav` presenti in
+`data/wav/wakeup` (oppure in `WAV_OUTPUT_DIR/wakeup` se configurato).
+Non richiede API key e restituisce un comando come `/hello`:
+
+```json
+{
+  "type": "command",
+  "wav": "http://localhost:8000/wav/wakeup/dimmi-tutto.wav"
+}
+```
+
+Scarica quindi l'URL in `wav` per ricevere il file con `Content-Type: audio/wav`.
+Puoi aggiungere altri saluti alla cartella senza riavviare il server.
+Se la cartella manca o non contiene WAV, la route restituisce HTTP 503 con
+`error: wakeup_unavailable`.
+
 ### Domanda vocale con risposta vocale
 
 `POST /ask` accetta direttamente un WAV registrato dal microfono, lo trascrive con
