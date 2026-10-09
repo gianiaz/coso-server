@@ -26,9 +26,11 @@ Verifica lo stato:
 curl http://localhost:8000/health
 ```
 
-### Hello e sintesi vocale
+### Saluto iniziale casuale
 
-`GET /hello` genera con `espeak-ng` la frase `Ciao, sono Coso, come stai?` e restituisce all'ESP un comando con l'URL pubblico del WAV:
+`GET /hello` sceglie casualmente un file `.wav` da `data/wav/hello`
+(oppure `WAV_OUTPUT_DIR/hello` se configurato) e restituisce un comando
+con il suo URL pubblico, senza richiedere API key:
 
 ```bash
 curl http://localhost:8000/hello
@@ -37,11 +39,16 @@ curl http://localhost:8000/hello
 ```json
 {
   "type": "command",
-  "wav": "http://localhost:8000/wav/ciao-sono-coso-come-stai.wav"
+  "wav": "http://localhost:8000/wav/hello/ciao.wav"
 }
 ```
 
-I file vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il server è dietro un reverse proxy, imposta `WAV_PUBLIC_BASE_URL` con l'origine pubblica, senza slash finale.
+I saluti sono scaricabili da `GET /wav/hello/<filename>` con `Content-Type: audio/wav`.
+La scelta viene ripetuta a ogni richiesta e il comando non viene memorizzato in cache.
+Puoi aggiungere saluti senza riavviare il server. Se mancano WAV, `/hello`
+restituisce HTTP 503 con `error: hello_unavailable`.
+
+I WAV generati da `/ask` vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il server è dietro un reverse proxy, imposta `WAV_PUBLIC_BASE_URL` con l'origine pubblica, senza slash finale.
 
 La sintesi usa una velocità predefinita di 150 parole al minuto. Puoi regolarla
 con `ESPEAK_SPEED` nel file `.env` (valori più bassi producono una voce più lenta).

@@ -17,8 +17,6 @@ from app.services.transcription_service import TranscriptionServiceError
 
 api = Blueprint("api", __name__)
 
-HELLO_TEXT = "Ciao, sono Coso, come stai?"
-
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 ALLOWED_AUDIO_TYPES = {"audio/wav", "audio/x-wav"}
 
@@ -183,6 +181,18 @@ def _wav_file_command(endpoint: str, filename: str):
     return jsonify(type="command", wav=wav_url)
 
 
+def _random_greeting_command(folder: str, endpoint: str):
+    directory = Path(current_app.config["WAV_OUTPUT_DIR"]) / folder
+    files = sorted(path.name for path in directory.glob("*.wav") if path.is_file())
+    if not files:
+        return jsonify(
+            error=f"{folder}_unavailable", message="Nessun saluto WAV disponibile."
+        ), 503
+    response = _wav_file_command(endpoint, random.choice(files))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @api.get("/health")
 def health():
     return jsonify(status="ok", service="coso-server")
@@ -190,20 +200,22 @@ def health():
 
 @api.get("/hello")
 def hello():
-    return _wav_command(HELLO_TEXT)
+    return _random_greeting_command("hello", "api.hello_wav_file")
+
+
+@api.get("/wav/hello/<filename>")
+def hello_wav_file(filename: str):
+    return send_from_directory(
+        Path(current_app.config["WAV_OUTPUT_DIR"]) / "hello",
+        filename,
+        mimetype="audio/wav",
+        conditional=True,
+    )
 
 
 @api.get("/wakeup")
 def wakeup():
-    directory = Path(current_app.config["WAV_OUTPUT_DIR"]) / "wakeup"
-    files = sorted(path.name for path in directory.glob("*.wav") if path.is_file())
-    if not files:
-        return jsonify(
-            error="wakeup_unavailable", message="Nessun saluto WAV disponibile."
-        ), 503
-    response = _wav_file_command("api.wakeup_wav_file", random.choice(files))
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return _random_greeting_command("wakeup", "api.wakeup_wav_file")
 
 
 @api.get("/wav/wakeup/<filename>")

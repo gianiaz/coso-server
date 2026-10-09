@@ -153,7 +153,7 @@ Risposta indicativa da `/hello`:
 ```json
 {
   "type": "command",
-  "wav": "http://192.168.1.50:8000/wav/ciao-sono-coso-come-stai.wav"
+  "wav": "http://192.168.1.50:8000/wav/hello/ciao.wav"
 }
 ```
 
@@ -161,7 +161,7 @@ Verifica che il file sia scaricabile:
 
 ```bash
 curl -o /tmp/coso-hello.wav \
-  http://127.0.0.1:8000/wav/ciao-sono-coso-come-stai.wav
+  http://127.0.0.1:8000/wav/hello/ciao.wav
 ls -lh /tmp/coso-hello.wav
 ```
 
@@ -265,7 +265,9 @@ sudo systemctl status coso-server
 
 ## 11. Permessi della directory WAV
 
-Il servizio deve poter scrivere in `data/wav`. Se `/hello` restituisce un errore, correggi proprietario e permessi:
+Il servizio deve poter scrivere in `data/wav` per sintetizzare le risposte di `/ask`
+e leggere i saluti preregistrati in `data/wav/hello` e `data/wav/wakeup`.
+Per correggere proprietario e permessi:
 
 ```bash
 sudo mkdir -p /home/pi/coso-server/data/wav
@@ -284,7 +286,13 @@ journalctl -u coso-server -n 100 --no-pager
 
 Controlla che tutti i percorsi nel file `coso-server.service` corrispondano all'utente e alla directory effettivi.
 
-### `/hello` restituisce errore 500
+### `/hello` restituisce errore 503
+
+Verifica che `data/wav/hello` (o `WAV_OUTPUT_DIR/hello`) contenga file `.wav`
+leggibili dal servizio. L'errore JSON `hello_unavailable` indica che non sono
+presenti saluti disponibili.
+
+### `/ask` restituisce errore 500 durante la sintesi
 
 Verifica `espeak-ng` e i permessi:
 
@@ -345,7 +353,8 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-Per provare realmente `/hello`, installa anche `espeak-ng` sul computer di sviluppo.
+Per provare `/hello`, aggiungi file `.wav` in `data/wav/hello`.
+Per la sintesi delle risposte di `/ask`, installa anche `espeak-ng` sul computer di sviluppo.
 
 ### Docker Compose locale
 

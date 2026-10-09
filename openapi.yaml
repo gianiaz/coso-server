@@ -37,19 +37,36 @@ paths:
     get:
       tags: [Voce]
       operationId: getHello
-      summary: Genera il saluto iniziale come comando WAV
+      summary: Sceglie un saluto WAV casuale iniziale
       description: >-
-        Sintetizza il saluto predefinito e restituisce l'URL assoluto del file
-        audio da scaricare e riprodurre.
+        Sceglie a ogni richiesta un file .wav dalla sottocartella hello di
+        WAV_OUTPUT_DIR (data/wav/hello per impostazione predefinita).
+        Restituisce l'URL assoluto del file da scaricare, senza sintesi vocale.
+        Non richiede X-API-Key. Il comando non deve essere memorizzato in cache.
       responses:
         "200":
-          description: Comando audio generato.
+          description: Comando contenente l'URL assoluto del saluto da scaricare.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/WavCommand"
-        "500":
-          $ref: "#/components/responses/SpeechGenerationError"
+              example:
+                type: command
+                wav: http://192.168.1.104:8000/wav/hello/ciao.wav
+        "503":
+          description: Nessun file WAV disponibile nella cartella dei saluti.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: hello_unavailable
+                message: Nessun saluto WAV disponibile.
 
   /wakeup:
     get:
@@ -85,6 +102,40 @@ paths:
               example:
                 error: wakeup_unavailable
                 message: Nessun saluto WAV disponibile.
+
+  /wav/hello/{filename}:
+    get:
+      tags: [Voce]
+      operationId: getHelloWav
+      summary: Scarica un saluto WAV preregistrato
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[^/]+\\.wav$"
+      responses:
+        "200":
+          description: File audio completo.
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Porzione del file richiesta tramite header Range.
+          headers:
+            Content-Range:
+              schema:
+                type: string
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /wav/wakeup/{filename}:
     get:
