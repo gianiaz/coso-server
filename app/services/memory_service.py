@@ -8,6 +8,7 @@ from pathlib import Path
 
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
+from app.timing import timed_phase
 
 
 LOGGER = logging.getLogger(__name__)
@@ -215,9 +216,10 @@ class MemoryService:
             return MemoryResult(analysis=analysis, contexts=(), saved=False)
 
         try:
-            raw_analysis = self._router.invoke(
-                [("system", ROUTER_INSTRUCTIONS), ("human", text)]
-            )
+            with timed_phase("memory_classification"):
+                raw_analysis = self._router.invoke(
+                    [("system", ROUTER_INSTRUCTIONS), ("human", text)]
+                )
             analysis = (
                 raw_analysis
                 if isinstance(raw_analysis, IntentAnalysis)
@@ -225,26 +227,27 @@ class MemoryService:
             )
             analysis = self._normalize(analysis)
 
-            contexts = (
-                tuple(
-                    self.store.search(
+            with timed_phase("memory_sqlite"):
+                contexts = (
+                    tuple(
+                        self.store.search(
+                            category=analysis.category,
+                            tags=analysis.tags,
+                            limit=self.result_limit,
+                        )
+                    )
+                    if analysis.needs_context
+                    else ()
+                )
+                saved = (
+                    self.store.save(
+                        summary=analysis.summary,
                         category=analysis.category,
                         tags=analysis.tags,
-                        limit=self.result_limit,
                     )
+                    if analysis.should_save
+                    else False
                 )
-                if analysis.needs_context
-                else ()
-            )
-            saved = (
-                self.store.save(
-                    summary=analysis.summary,
-                    category=analysis.category,
-                    tags=analysis.tags,
-                )
-                if analysis.should_save
-                else False
-            )
             return MemoryResult(analysis=analysis, contexts=contexts, saved=saved)
         except Exception:
             # La memoria è un arricchimento: un errore del router o del DB non deve

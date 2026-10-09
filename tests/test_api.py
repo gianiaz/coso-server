@@ -221,6 +221,42 @@ def test_ask_maps_transcription_errors(client, app):
     assert app.extensions["openai_service"].calls == []
 
 
+def test_voice_timings_correlate_and_order_phases(client, caplog):
+    caplog.set_level("INFO")
+    response = client.post(
+        "/ask", data=make_wav(), content_type="audio/wav",
+        headers={"X-Request-ID": "buddy-test-123"},
+    )
+    assert response.status_code == 200
+    messages = [record.getMessage() for record in caplog.records
+                if "[Timing]" in record.getMessage()]
+    assert messages
+    assert all("id=buddy-test-123 " in message for message in messages)
+    assert "event=request_start" in messages[0]
+    assert "event=response_ready status=200" in messages[-1]
+    ended = [message.split("phase=")[1].split()[0] for message in messages
+             if "event=phase_end" in message]
+    assert ended == ["audio_body_read", "audio_validation", "transcription",
+                     "memory", "answer_generation", "speech_generation"]
+    assert all("duration_ms=" in message and "outcome=ok" in message
+               for message in messages if "event=phase_end" in message)
+    assert not any("Perch" in message or "Risposta di prova" in message
+                   for message in messages)
+
+
+def test_voice_timings_record_failed_phase_and_http_error(client, app, caplog):
+    caplog.set_level("INFO")
+    app.extensions["transcription_service"] = FakeTranscriptionService(fail=True)
+    response = client.post("/ask", data=make_wav(), content_type="audio/wav")
+    assert response.status_code == 502
+    messages = [record.getMessage() for record in caplog.records
+                if "[Timing]" in record.getMessage()]
+    assert any("phase=transcription outcome=error duration_ms=" in message
+               for message in messages)
+    assert "event=response_ready status=502" in messages[-1]
+    assert not any("phase=answer_generation" in message for message in messages)
+
+
 def test_serves_generated_wav(client, app):
     wav_path = app.config["WAV_OUTPUT_DIR"] + "/test.wav"
     with open(wav_path, "wb") as wav_file:

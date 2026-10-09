@@ -14,6 +14,7 @@ from flask import Blueprint, current_app, jsonify, request, send_from_directory,
 from app.services.openai_service import ImageInput, OpenAIServiceError
 from app.services.speech_service import SpeechGenerationError
 from app.services.transcription_service import TranscriptionServiceError
+from app.timing import timed_phase
 
 api = Blueprint("api", __name__)
 
@@ -33,12 +34,14 @@ class ValidationError(ValueError):
 
 def _ask_openai(*, text: str, image: ImageInput | None = None):
     memory = current_app.extensions["memory_service"]
-    memory_result = memory.process(text)
+    with timed_phase("memory"):
+        memory_result = memory.process(text)
     memory_context = memory.format_context(memory_result.contexts)
     service = current_app.extensions["openai_service"]
-    if memory_context:
-        return service.ask(text=text, image=image, memory_context=memory_context)
-    return service.ask(text=text, image=image)
+    with timed_phase("answer_generation"):
+        if memory_context:
+            return service.ask(text=text, image=image, memory_context=memory_context)
+        return service.ask(text=text, image=image)
 
 
 def require_api_key(view):
@@ -132,7 +135,8 @@ def _parse_audio_question() -> bytes:
     if request.mimetype not in ALLOWED_AUDIO_TYPES:
         raise ValidationError("Usa Content-Type audio/wav.")
 
-    audio = request.get_data(cache=False)
+    with timed_phase("audio_body_read"):
+        audio = request.get_data(cache=False)
     if not audio:
         raise ValidationError("L'audio è vuoto.")
     if len(audio) > current_app.config["MAX_AUDIO_BYTES"]:
@@ -164,7 +168,8 @@ def _parse_audio_question() -> bytes:
 def _wav_command(text: str):
     service = current_app.extensions["speech_service"]
     try:
-        filename = service.generate(text)
+        with timed_phase("speech_generation"):
+            filename = service.generate(text)
     except SpeechGenerationError:
         current_app.logger.exception("Errore durante la generazione del file WAV")
         return jsonify(error="speech_generation_error", message="Impossibile generare l'audio."), 500
@@ -231,13 +236,15 @@ def wakeup_wav_file(filename: str):
 @api.post("/ask")
 def ask_question():
     try:
-        audio = _parse_audio_question()
+        with timed_phase("audio_validation"):
+            audio = _parse_audio_question()
     except ValidationError as exc:
         return jsonify(error="validation_error", message=str(exc)), 400
 
     transcription_service = current_app.extensions["transcription_service"]
     try:
-        question = transcription_service.transcribe(audio)
+        with timed_phase("transcription"):
+            question = transcription_service.transcribe(audio)
     except TranscriptionServiceError:
         current_app.logger.exception("Errore durante la trascrizione audio")
         return jsonify(

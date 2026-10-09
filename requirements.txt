@@ -6,3 +6,4 @@ langchain-community>=0.4,<0.5
 pydantic>=2.7,<3
 pydub>=0.25,<1
 audioop-lts>=0.2.2; python_version >= "3.13"
+piper-tts==1.8.0

@@ -4,7 +4,7 @@ Questa guida descrive l'installazione di Coso Server direttamente su Raspberry P
 
 ## 1. Requisiti
 
-- Raspberry Pi con Raspberry Pi OS e accesso alla rete.
+- Raspberry Pi Zero 2 W o successivo con Raspberry Pi OS 64 bit e accesso alla rete.
 - Python 3.10 o successivo (Raspberry Pi OS Bookworm include Python 3.11).
 - Una API key OpenAI.
 - Accesso al terminale del Raspberry, direttamente oppure tramite SSH.
@@ -28,21 +28,25 @@ Se il tuo nome utente è diverso, sostituisci `pi` nei percorsi e nel servizio `
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-pip python3-venv espeak-ng ffmpeg
+sudo apt install -y git python3 python3-pip python3-venv python3-dev ffmpeg
 ```
 
-Verifica che la voce italiana sia disponibile:
+`python3-dev` fornisce gli header di Python necessari alla compilazione delle
+dipendenze native; durante l'installazione sul server è stato necessario
+installare anche questo pacchetto. Se usi una versione di Python diversa da
+quella di sistema, installa il pacchetto di sviluppo corrispondente (per esempio
+`python3.13-dev` per Python 3.13).
+
+Il pacchetto `ffmpeg` include anche `ffprobe`: entrambi devono essere disponibili
+per la trascrizione audio. Verifica l'installazione:
 
 ```bash
-espeak-ng --voices | grep -i it
+ffmpeg -version
+ffprobe -version
 ```
 
-Puoi provare la sintesi vocale direttamente:
-
-```bash
-espeak-ng -v it -s 150 "Ciao, sono Coso, come stai?" -w /tmp/coso-test.wav
-ls -lh /tmp/coso-test.wav
-```
+La sintesi vocale usa `piper-tts`, installato nei passi successivi, con la
+voce italiana Paola medium. Non serve installare il comando `espeak-ng`.
 
 ## 3. Scarica il progetto
 
@@ -66,9 +70,18 @@ git clone git@github.com:gianiaz/coso-server.git
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
+.venv/bin/python scripts/download_piper_voice.py
 ```
 
 Non è necessario attivare la virtualenv: nei comandi di questa guida viene sempre usato il percorso completo di Python o Gunicorn.
+
+Lo script scarica modello e configurazione in `data/voices` e riutilizza i
+file se presenti. Per una prova di sintesi:
+
+```bash
+.venv/bin/python -m piper -m data/voices/it_IT-paola-medium.onnx -f /tmp/coso-test.wav -- "Ciao, sono Coso, come stai?"
+ls -lh /tmp/coso-test.wav
+```
 
 ## 5. Configura l'applicazione
 
@@ -90,9 +103,8 @@ OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 COSO_API_KEY=una-password-lunga-e-casuale
 
 WAV_OUTPUT_DIR=/home/pi/coso-server/data/wav
-ESPEAK_EXECUTABLE=espeak-ng
-ESPEAK_VOICE=it
-ESPEAK_SPEED=150
+PIPER_MODEL_PATH=/home/pi/coso-server/data/voices/it_IT-paola-medium.onnx
+PIPER_LENGTH_SCALE=1.0
 
 # Imposta l'indirizzo raggiungibile dall'ESP, senza slash finale.
 WAV_PUBLIC_BASE_URL=http://192.168.1.50:8000
@@ -259,6 +271,7 @@ sudo systemctl restart coso-server
 cd /home/pi/coso-server
 git pull --ff-only
 .venv/bin/pip install -r requirements.txt
+.venv/bin/python scripts/download_piper_voice.py
 sudo systemctl restart coso-server
 sudo systemctl status coso-server
 ```
@@ -292,13 +305,36 @@ Verifica che `data/wav/hello` (o `WAV_OUTPUT_DIR/hello`) contenga file `.wav`
 leggibili dal servizio. L'errore JSON `hello_unavailable` indica che non sono
 presenti saluti disponibili.
 
-### `/ask` restituisce errore 500 durante la sintesi
+### `/ask` restituisce errore 502 durante la trascrizione
 
-Verifica `espeak-ng` e i permessi:
+Se i log riportano `Couldn't find ffmpeg or avconv`,
+`Couldn't find ffprobe or avprobe` oppure
+`FileNotFoundError: [Errno 2] No such file or directory: 'ffprobe'`, mancano
+i programmi di sistema necessari a leggere l'audio. In questo caso il problema
+si verifica prima della chiamata di trascrizione a OpenAI.
+
+Installa il pacchetto sul server e riavvia il servizio:
 
 ```bash
-which espeak-ng
-espeak-ng -v it -s 150 "Prova audio" -w /home/pi/coso-server/data/wav/prova.wav
+sudo apt update
+sudo apt install -y ffmpeg
+ffmpeg -version
+ffprobe -version
+sudo systemctl restart coso-server
+journalctl -u coso-server -n 100 --no-pager
+```
+
+Riprova quindi a inviare l'audio a `/ask`.
+
+### `/ask` restituisce errore 500 durante la sintesi
+
+Verifica il modello Piper, il JSON accanto all'ONNX e i permessi della
+directory WAV. Le vecchie variabili `ESPEAK_*` vanno sostituite con
+`PIPER_MODEL_PATH` e `PIPER_LENGTH_SCALE`:
+
+```bash
+.venv/bin/python scripts/download_piper_voice.py
+.venv/bin/python -m piper -m data/voices/it_IT-paola-medium.onnx -f /home/pi/coso-server/data/wav/prova.wav -- "Prova audio"
 ls -lh /home/pi/coso-server/data/wav/prova.wav
 ```
 
@@ -354,7 +390,9 @@ pytest
 ```
 
 Per provare `/hello`, aggiungi file `.wav` in `data/wav/hello`.
-Per la sintesi delle risposte di `/ask`, installa anche `espeak-ng` sul computer di sviluppo.
+Per la sintesi delle risposte di `/ask`, esegui anche
+`python scripts/download_piper_voice.py`. I test usano una voce simulata
+e non richiedono di scaricare il modello.
 
 ### Docker Compose locale
 

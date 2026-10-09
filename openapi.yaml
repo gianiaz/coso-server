@@ -6,6 +6,10 @@ info:
     API Flask per trascrizione vocale, risposte OpenAI, sintesi WAV e richieste
     testuali o con immagini. I limiti indicati sono i valori predefiniti e
     possono essere modificati tramite le variabili d'ambiente del server.
+    Tutte le richieste possono includere l'header opzionale X-Request-ID
+    (1-64 caratteri ASCII alfanumerici, trattino o underscore), usato solo
+    per correlare i log temporali. Se assente o non valido, il server genera
+    un ID. Questo header non modifica autenticazione o risposte.
 servers:
   - url: http://192.168.1.104:8000
     description: Raspberry Pi nella rete locale di Buddy

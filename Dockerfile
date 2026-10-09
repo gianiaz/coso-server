@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends espeak-ng ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system coso && adduser --system --ingroup coso coso
@@ -17,6 +17,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY --chown=coso:coso data ./data
+COPY scripts ./scripts
+RUN python scripts/download_piper_voice.py && chown -R coso:coso data/voices
 COPY wsgi.py .
 
 USER coso

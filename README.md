@@ -50,8 +50,31 @@ restituisce HTTP 503 con `error: hello_unavailable`.
 
 I WAV generati da `/ask` vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il server è dietro un reverse proxy, imposta `WAV_PUBLIC_BASE_URL` con l'origine pubblica, senza slash finale.
 
-La sintesi usa una velocità predefinita di 150 parole al minuto. Puoi regolarla
-con `ESPEAK_SPEED` nel file `.env` (valori più bassi producono una voce più lenta).
+La sintesi usa Piper (`piper-tts`) con la voce italiana Paola medium. Il modello
+viene caricato alla prima sintesi e riutilizzato nelle richieste successive.
+Puoi regolare `PIPER_LENGTH_SCALE` nel file `.env`: `1.0` usa la velocita
+del modello, valori maggiori rallentano la voce e valori minori la accelerano.
+Le vecchie variabili `ESPEAK_*` non sono piu usate.
+Prima della sintesi, il server rimuove la formattazione Markdown più comune
+(grassetto, corsivo, titoli, elenchi e delimitatori di codice), conservando il
+contenuto e il testo dei link. Questo evita che la voce legga i simboli di
+formattazione, per esempio «asterisco asterisco».
+
+Per l'installazione nativa, dopo `pip install -r requirements.txt` scarica
+il modello ONNX e il JSON corrispondente:
+
+```bash
+python scripts/download_piper_voice.py
+```
+
+Lo script scarica entrambi da una revisione fissa di
+[rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/375a0fe641dea077c2a47b4e9a056d6da521eed3/it/it_IT/paola/medium)
+in `data/voices`, esclusa da Git. Se i file sono gia presenti li riutilizza;
+`--force` li riscarica, `--output-dir` cambia directory. La configurazione
+deve chiamarsi `it_IT-paola-medium.onnx.json` accanto al modello ONNX.
+Docker scarica la voce durante la build e non richiede download all'avvio.
+Le risposte rimangono WAV PCM mono a 16 bit, 22050 Hz, compatibili con Buddy.
+I saluti preregistrati di `/hello` e `/wakeup` si aggiungono come prima.
 
 ### Saluto casuale al risveglio
 
@@ -169,7 +192,8 @@ Le variabili principali sono documentate in `.env.example`.
 - `OPENAI_INSTRUCTIONS`: istruzioni generali date al modello.
 - `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TIMEOUT_SECONDS`: limiti della chiamata upstream.
 - `MAX_REQUEST_BYTES`, `MAX_AUDIO_BYTES`, `MAX_IMAGE_BYTES`, `MAX_TEXT_LENGTH`: limiti degli input.
-- `ESPEAK_EXECUTABLE`, `ESPEAK_VOICE`, `ESPEAK_SPEED`: comando, voce e velocità in parole al minuto della sintesi vocale.
+- `PIPER_MODEL_PATH`: percorso del modello ONNX; predefinito `data/voices/it_IT-paola-medium.onnx` nella directory del progetto.
+- `PIPER_LENGTH_SCALE`: fattore di durata della voce, positivo e finito; predefinito `1.0`.
 
 La chiave OpenAI non viene mai inviata al client e le richieste upstream usano
 `store=false`. Coso Server non conserva immagini o registrazioni; salva localmente
@@ -196,14 +220,39 @@ La procedura completa consigliata è documentata in [setup.md](setup.md).
 
 Su Raspberry Pi Zero 2 W, usa Raspberry Pi OS 64 bit e avvia lo stesso `compose.yaml` con `docker compose up -d --build`.
 
-Il Raspberry Pi Zero originale usa ARMv6: le immagini Docker Python moderne possono non essere disponibili per questa architettura. In quel caso installa Python, `espeak-ng` e le dipendenze direttamente su Raspberry Pi OS, poi esegui Gunicorn:
+Per Piper e ONNX Runtime usa Raspberry Pi OS 64 bit su un Pi Zero 2 W o
+un modello successivo. Il Pi Zero originale ARMv6 non e una piattaforma
+supportata da questa installazione. Per avviare senza Docker:
 
 ```bash
-sudo apt install python3-venv espeak-ng
+sudo apt install python3-venv ffmpeg
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
+python scripts/download_piper_voice.py
 gunicorn --bind 0.0.0.0:8000 --workers 1 --threads 2 --timeout 90 wsgi:app
 ```
 
 Per esporre il servizio fuori dalla rete locale aggiungi HTTPS tramite un reverse proxy e mantieni sempre valorizzata `COSO_API_KEY`.
+
+## Log temporali
+
+I log INFO `[Timing]` riportano ID richiesta, timestamp `utc` e durate
+in millisecondi calcolate con un orologio monotono. L'header opzionale
+`X-Request-ID` permette di abbinare i log HTTP a quelli del firmware Buddy;
+senza header il server genera un ID. Le richieste simultanee hanno ID separati.
+
+Ogni richiesta registra `request_start` e `response_ready` con status e
+`elapsed_ms`. Le fasi registrano `phase_start` e `phase_end` con `duration_ms`
+ed esito: lettura body audio, validazione WAV, trascrizione, memoria,
+classificazione della memoria, accesso SQLite, risposta AI e sintesi vocale.
+La prima sintesi include anche la fase `piper_model_load`; nelle successive
+il modello rimane in memoria.
+La durata `memory` comprende classificazione e SQLite; la validazione audio
+comprende la lettura del body. Le durate annidate non vanno sommate.
+
+`response_ready` misura fino alla preparazione della risposta Flask, non
+il completamento del trasferimento sulla rete: per i WAV confrontare anche
+i log di download e riproduzione sul client. Nessun testo della domanda,
+audio o credenziale viene aggiunto ai log temporali. Impostare `LOG_LEVEL=INFO`
+per visualizzarli. Il comportamento e i formati delle API restano invariati.

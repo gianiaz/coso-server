@@ -9,6 +9,7 @@ from app.services.openai_service import OpenAIService
 from app.services.memory_service import MemoryService
 from app.services.speech_service import SpeechService
 from app.services.transcription_service import TranscriptionService
+from app.timing import install_request_timing
 
 
 DEFAULT_OPENAI_INSTRUCTIONS = (
@@ -59,9 +60,11 @@ def create_app(test_config: dict | None = None) -> Flask:
             str(Path(__file__).resolve().parent.parent / "data" / "wav"),
         ),
         WAV_PUBLIC_BASE_URL=os.getenv("WAV_PUBLIC_BASE_URL", ""),
-        ESPEAK_EXECUTABLE=os.getenv("ESPEAK_EXECUTABLE", "espeak-ng"),
-        ESPEAK_VOICE=os.getenv("ESPEAK_VOICE", "it"),
-        ESPEAK_SPEED=_int_env("ESPEAK_SPEED", 150),
+        PIPER_MODEL_PATH=os.getenv(
+            "PIPER_MODEL_PATH",
+            str(Path(__file__).resolve().parent.parent / "data" / "voices" / "it_IT-paola-medium.onnx"),
+        ),
+        PIPER_LENGTH_SCALE=float(os.getenv("PIPER_LENGTH_SCALE", "1.0")),
     )
 
     if test_config:
@@ -95,10 +98,10 @@ def create_app(test_config: dict | None = None) -> Flask:
     )
     app.extensions["speech_service"] = SpeechService(
         output_dir=Path(app.config["WAV_OUTPUT_DIR"]),
-        executable=app.config["ESPEAK_EXECUTABLE"],
-        voice=app.config["ESPEAK_VOICE"],
-        speed=app.config["ESPEAK_SPEED"],
+        model_path=Path(app.config["PIPER_MODEL_PATH"]),
+        length_scale=app.config["PIPER_LENGTH_SCALE"],
     )
+    install_request_timing(app)
     app.register_blueprint(api)
 
     @app.errorhandler(413)

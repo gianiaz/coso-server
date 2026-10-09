@@ -17,9 +17,8 @@ services:
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       MAX_AUDIO_BYTES: "${MAX_AUDIO_BYTES:-2097152}"
       WAV_PUBLIC_BASE_URL: "${WAV_PUBLIC_BASE_URL:-}"
-      ESPEAK_EXECUTABLE: "${ESPEAK_EXECUTABLE:-espeak-ng}"
-      ESPEAK_VOICE: "${ESPEAK_VOICE:-it}"
-      ESPEAK_SPEED: "${ESPEAK_SPEED:-150}"
+      PIPER_MODEL_PATH: "${PIPER_MODEL_PATH:-/app/data/voices/it_IT-paola-medium.onnx}"
+      PIPER_LENGTH_SCALE: "${PIPER_LENGTH_SCALE:-1.0}"
     volumes:
       - wav-data:/app/data/wav
       - memory-data:/app/data/memory
