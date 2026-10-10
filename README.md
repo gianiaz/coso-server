@@ -4,6 +4,10 @@ Piccolo servizio Flask pensato per ricevere testo e immagini e inoltrarli alla R
 
 Per l'installazione completa su Raspberry Pi senza Docker, la configurazione di `systemd`, gli aggiornamenti e il troubleshooting, consulta [setup.md](setup.md).
 
+Per aggiornare automaticamente il Raspberry a ogni push GitHub, consulta
+[deploy.md](deploy.md): il servizio separato espone `POST /deploy`, verifica
+la firma GitHub, aggiorna codice e dipendenze e riavvia `coso-server`.
+
 ## Avvio locale con Docker
 
 Requisiti: Docker con il plugin Compose e una API key OpenAI.

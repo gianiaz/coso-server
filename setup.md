@@ -267,6 +267,9 @@ sudo systemctl restart coso-server
 
 ## 10. Aggiornamento dell'applicazione
 
+Per automatizzare questi aggiornamenti con un webhook GitHub firmato e un
+servizio separato sul Raspberry, segui [deploy.md](deploy.md).
+
 ```bash
 cd /home/pi/coso-server
 git pull --ff-only
