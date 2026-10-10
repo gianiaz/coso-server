@@ -1,10 +1,8 @@
 import base64
 import binascii
-import hmac
 import random
 import wave
 from dataclasses import dataclass
-from functools import wraps
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
@@ -42,18 +40,6 @@ def _ask_openai(*, text: str, image: ImageInput | None = None):
         if memory_context:
             return service.ask(text=text, image=image, memory_context=memory_context)
         return service.ask(text=text, image=image)
-
-
-def require_api_key(view):
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        expected = current_app.config["COSO_API_KEY"]
-        provided = request.headers.get("X-API-Key", "")
-        if expected and not hmac.compare_digest(provided, expected):
-            return jsonify(error="unauthorized", message="API key mancante o non valida."), 401
-        return view(*args, **kwargs)
-
-    return wrapped
 
 
 def _validate_text(value) -> str:
@@ -271,7 +257,6 @@ def wav_file(filename: str):
 
 
 @api.post("/api/v1/ask")
-@require_api_key
 def ask():
     try:
         data = _parse_request()

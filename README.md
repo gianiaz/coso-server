@@ -24,20 +24,28 @@ Su PowerShell, il primo comando equivalente è:
 Copy-Item .env.example .env
 ```
 
+Per gli esempi `curl`, carica la chiave dal tuo `.env` nella shell:
+
+```bash
+set -a
+source .env
+set +a
+```
+
 Verifica lo stato:
 
 ```bash
-curl http://localhost:8000/health
+curl -H "X-API-Key: $COSO_API_KEY" http://localhost:8000/health
 ```
 
 ### Saluto iniziale casuale
 
 `GET /hello` sceglie casualmente un file `.wav` da `data/wav/hello`
 (oppure `WAV_OUTPUT_DIR/hello` se configurato) e restituisce un comando
-con il suo URL pubblico, senza richiedere API key:
+con il suo URL assoluto; richiede l'header X-API-Key:
 
 ```bash
-curl http://localhost:8000/hello
+curl -H "X-API-Key: $COSO_API_KEY" http://localhost:8000/hello
 ```
 
 ```json
@@ -84,7 +92,7 @@ I saluti preregistrati di `/hello` e `/wakeup` si aggiungono come prima.
 
 `GET /wakeup` sceglie casualmente uno dei file `.wav` presenti in
 `data/wav/wakeup` (oppure in `WAV_OUTPUT_DIR/wakeup` se configurato).
-Non richiede API key e restituisce un comando come `/hello`:
+Richiede X-API-Key e restituisce un comando come `/hello`:
 
 ```json
 {
@@ -105,7 +113,7 @@ Se la cartella manca o non contiene WAV, la route restituisce HTTP 503 con
 nuovo file WAV. Il formato richiesto è PCM mono, 16 bit little-endian, 16 kHz.
 
 ```bash
-curl -X POST http://localhost:8000/ask \
+curl -H "X-API-Key: $COSO_API_KEY" -X POST http://localhost:8000/ask \
   -H "Content-Type: audio/wav" \
   --data-binary @domanda.wav
 ```
@@ -127,17 +135,15 @@ in formato OpenAPI 3.1.
 ### Testo
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/ask \
+curl -H "X-API-Key: $COSO_API_KEY" -X POST http://localhost:8000/api/v1/ask \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: cambia-questa-chiave" \
   -d '{"text":"Perché il cielo è blu?"}'
 ```
 
 ### Immagine caricata
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/ask \
-  -H "X-API-Key: cambia-questa-chiave" \
+curl -H "X-API-Key: $COSO_API_KEY" -X POST http://localhost:8000/api/v1/ask \
   -F "text=Che cosa vedi in questa immagine?" \
   -F "image=@foto.jpg"
 ```
@@ -192,7 +198,7 @@ Le variabili principali sono documentate in `.env.example`.
 - `MEMORY_ROUTER_MODEL`: modello economico per classificazione ed estrazione; predefinito `gpt-4o-mini`.
 - `MEMORY_DB_PATH`: percorso del database SQLite persistente.
 - `MEMORY_RESULT_LIMIT`: massimo numero di ricordi iniettati in una risposta; predefinito `6`.
-- `COSO_API_KEY`: protegge l'endpoint tramite header `X-API-Key`. In produzione non lasciarla vuota.
+- `COSO_API_KEY`: obbligatoria su tutte le route tramite `X-API-Key`, inclusi healthcheck e WAV; il server non parte se e vuota.
 - `OPENAI_INSTRUCTIONS`: istruzioni generali date al modello.
 - `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TIMEOUT_SECONDS`: limiti della chiamata upstream.
 - `MAX_REQUEST_BYTES`, `MAX_AUDIO_BYTES`, `MAX_IMAGE_BYTES`, `MAX_TEXT_LENGTH`: limiti degli input.

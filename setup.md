@@ -100,7 +100,7 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4.1-mini
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 
-COSO_API_KEY=una-password-lunga-e-casuale
+COSO_API_KEY=la-stessa-chiave-configurata-in-buddy
 
 WAV_OUTPUT_DIR=/home/giovanni/coso-server/data/wav
 PIPER_MODEL_PATH=/home/giovanni/coso-server/data/voices/it_IT-paola-medium.onnx
@@ -111,6 +111,10 @@ WAV_PUBLIC_BASE_URL=http://192.168.1.50:8000
 ```
 
 Sostituisci `192.168.1.50` con l'indirizzo IP del Raspberry. Se `WAV_PUBLIC_BASE_URL` rimane vuoto, Coso Server costruisce l'URL usando l'host della richiesta ricevuta.
+
+Usa una chiave casuale non vuota, identica a `BUDDY_COSO_API_KEY` nel file
+privato `src/config/ServerSecrets.h` del firmware. Per generare una chiave:
+`python3 -c "import secrets; print(secrets.token_hex(32))"`.
 
 Proteggi il file, perché contiene credenziali:
 
@@ -150,8 +154,8 @@ La configurazione con un solo worker mantiene basso l'uso di memoria sul Raspber
 Dal Raspberry:
 
 ```bash
-curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/hello
+curl -H "X-API-Key: $COSO_API_KEY" http://127.0.0.1:8000/health
+curl -H "X-API-Key: $COSO_API_KEY" http://127.0.0.1:8000/hello
 ```
 
 Risposta attesa da `/health`:
@@ -172,7 +176,7 @@ Risposta indicativa da `/hello`:
 Verifica che il file sia scaricabile:
 
 ```bash
-curl -o /tmp/coso-hello.wav \
+curl -H "X-API-Key: $COSO_API_KEY" -o /tmp/coso-hello.wav \
   http://127.0.0.1:8000/wav/hello/ciao.wav
 ls -lh /tmp/coso-hello.wav
 ```
@@ -182,9 +186,8 @@ Da un altro dispositivo nella stessa rete usa l'IP del Raspberry al posto di `12
 Per provare l'endpoint OpenAI:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/ask \
+curl -H "X-API-Key: $COSO_API_KEY" -X POST http://127.0.0.1:8000/api/v1/ask \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: una-password-lunga-e-casuale" \
   -d '{"text":"Ciao, rispondi con una frase breve."}'
 ```
 
@@ -192,7 +195,7 @@ Per provare la stessa pipeline vocale usata dall'ESP32, prepara un WAV PCM mono,
 16 bit, 16 kHz e invialo come body della richiesta:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/ask \
+curl -H "X-API-Key: $COSO_API_KEY" -X POST http://127.0.0.1:8000/ask \
   -H "Content-Type: audio/wav" \
   --data-binary @domanda.wav
 ```
@@ -364,7 +367,12 @@ journalctl -u coso-server -n 100 --no-pager
 
 ## 13. Sicurezza di rete
 
-Gli endpoint `/hello` e `/wav/...` sono pubblici per permettere all'ESP di usarli. L'endpoint `/api/v1/ask` è protetto da `COSO_API_KEY` quando questa variabile è valorizzata.
+Tutte le route richiedono `X-API-Key`, inclusi `/health`, `/hello`, `/wakeup`,
+`/ask`, `/api/v1/ask` e tutti i WAV. Anche HEAD e OPTIONS richiedono la chiave.
+Senza chiave o con chiave errata il server restituisce HTTP 401 prima di leggere
+il body o avviare i servizi. Una `COSO_API_KEY` vuota impedisce l'avvio del server.
+Buddy deve usare lo stesso valore in `src/config/ServerSecrets.h`; dopo averlo
+configurato occorre ricompilare e caricare il firmware.
 
 Per l'uso nella sola rete locale puoi lasciare il servizio sulla porta `8000`. Se devi esporlo su Internet, non pubblicare direttamente Gunicorn: usa HTTPS tramite un reverse proxy o un tunnel sicuro.
 

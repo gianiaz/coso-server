@@ -5,6 +5,7 @@ from pathlib import Path
 from flask import Flask, jsonify
 
 from app.routes import api
+from app.auth import authenticate_request
 from app.services.openai_service import OpenAIService
 from app.services.memory_service import MemoryService
 from app.services.speech_service import SpeechService
@@ -31,7 +32,7 @@ def _int_env(name: str, default: int) -> int:
 
 
 def create_app(test_config: dict | None = None) -> Flask:
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder=None)
     app.config.from_mapping(
         COSO_API_KEY=os.getenv("COSO_API_KEY", ""),
         OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", ""),
@@ -70,6 +71,10 @@ def create_app(test_config: dict | None = None) -> Flask:
     if test_config:
         app.config.update(test_config)
 
+    api_key = app.config["COSO_API_KEY"]
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise RuntimeError("COSO_API_KEY obbligatoria: configura una chiave non vuota")
+
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -102,6 +107,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         length_scale=app.config["PIPER_LENGTH_SCALE"],
     )
     install_request_timing(app)
+    app.before_request(authenticate_request)
     app.register_blueprint(api)
 
     @app.errorhandler(413)

@@ -72,7 +72,9 @@ def app(tmp_path):
 
 @pytest.fixture()
 def client(app):
-    return app.test_client()
+    client = app.test_client()
+    client.environ_base["HTTP_X_API_KEY"] = "secret"
+    return client
 
 
 def auth():
@@ -81,7 +83,7 @@ def auth():
 
 def test_default_openai_instructions_describe_coso(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENAI_INSTRUCTIONS", raising=False)
-    application = create_app({"TESTING": True, "WAV_OUTPUT_DIR": str(tmp_path)})
+    application = create_app({"TESTING": True, "COSO_API_KEY": "secret", "WAV_OUTPUT_DIR": str(tmp_path)})
 
     assert application.config["OPENAI_INSTRUCTIONS"] == DEFAULT_OPENAI_INSTRUCTIONS
     assert "Ti chiami Coso" in DEFAULT_OPENAI_INSTRUCTIONS
@@ -268,9 +270,54 @@ def test_serves_generated_wav(client, app):
     assert response.data == b"RIFF-test"
 
 
-def test_requires_api_key(client):
-    response = client.post("/api/v1/ask", json={"text": "Ciao"})
+def test_requires_api_key(app):
+    response = app.test_client().post("/api/v1/ask", json={"text": "Ciao"})
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize("key", [None, "", "wrong", "chiave-errata-è"])
+@pytest.mark.parametrize("method,path", [
+    ("GET", "/health"), ("HEAD", "/health"), ("OPTIONS", "/health"),
+    ("GET", "/hello"), ("GET", "/wakeup"), ("POST", "/ask"),
+    ("GET", "/wav/test.wav"), ("HEAD", "/wav/test.wav"),
+    ("GET", "/wav/hello/test.wav"), ("GET", "/wav/wakeup/test.wav"),
+    ("POST", "/api/v1/ask"), ("OPTIONS", "/api/v1/ask"),
+    ("GET", "/static/file.txt"), ("GET", "/unknown"),
+    ("DELETE", "/health"),
+])
+def test_every_request_rejects_missing_or_wrong_key(app, method, path, key, caplog):
+    headers = {} if key is None else {"X-API-Key": key}
+    response = app.test_client().open(path, method=method, headers=headers)
+    assert response.status_code == 401
+    if method != "HEAD":
+        assert response.json == {
+            "error": "unauthorized", "message": "API key mancante o non valida."
+        }
+    assert app.extensions["transcription_service"].calls == []
+    assert app.extensions["openai_service"].calls == []
+    assert app.extensions["speech_service"].calls == []
+    assert not any("phase_start" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.parametrize("key", [None, "", "   ", 123])
+def test_server_requires_nonempty_key_at_startup(tmp_path, key):
+    with pytest.raises(RuntimeError, match="COSO_API_KEY obbligatoria"):
+        create_app({"TESTING": True, "COSO_API_KEY": key, "WAV_OUTPUT_DIR": str(tmp_path)})
+
+
+def test_runtime_empty_key_does_not_disable_authentication(app):
+    app.config["COSO_API_KEY"] = ""
+    assert app.test_client().get("/health").status_code == 401
+
+
+def test_authenticated_head_range_and_options(client, app):
+    audio = make_wav()
+    (Path(app.config["WAV_OUTPUT_DIR"]) / "test.wav").write_bytes(audio)
+    assert client.head("/wav/test.wav").status_code == 200
+    response = client.get("/wav/test.wav", headers={"Range": "bytes=0-43"})
+    assert response.status_code == 206
+    assert response.data == audio[:44]
+    assert client.options("/ask").status_code == 200
 
 
 def test_accepts_text_json(client, app):

@@ -3,6 +3,8 @@ info:
   title: Coso Server API
   version: 1.0.0
   description: >-
+    Tutte le route richiedono X-API-Key, inclusi healthcheck e download WAV.
+    COSO_API_KEY deve essere configurata e non vuota per avviare il server.
     API Flask per trascrizione vocale, risposte OpenAI, sintesi WAV e richieste
     testuali o con immagini. I limiti indicati sono i valori predefiniti e
     possono essere modificati tramite le variabili d'ambiente del server.
@@ -20,6 +22,9 @@ tags:
   - name: Voce
   - name: API
 
+security:
+  - ApiKeyAuth: []
+
 paths:
   /health:
     get:
@@ -27,6 +32,8 @@ paths:
       operationId: getHealth
       summary: Verifica lo stato del servizio
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "200":
           description: Servizio disponibile.
           content:
@@ -46,8 +53,10 @@ paths:
         Sceglie a ogni richiesta un file .wav dalla sottocartella hello di
         WAV_OUTPUT_DIR (data/wav/hello per impostazione predefinita).
         Restituisce l'URL assoluto del file da scaricare, senza sintesi vocale.
-        Non richiede X-API-Key. Il comando non deve essere memorizzato in cache.
+        Richiede X-API-Key. Il comando non deve essere memorizzato in cache.
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "200":
           description: Comando contenente l'URL assoluto del saluto da scaricare.
           headers:
@@ -81,8 +90,10 @@ paths:
         Sceglie a ogni richiesta un file .wav dalla sottocartella wakeup di
         WAV_OUTPUT_DIR (data/wav/wakeup per impostazione predefinita).
         Restituisce lo stesso comando di /hello, senza sintesi vocale.
-        Non richiede X-API-Key. Il comando non deve essere memorizzato in cache.
+        Richiede X-API-Key. Il comando non deve essere memorizzato in cache.
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "200":
           description: Comando contenente l'URL assoluto del saluto da scaricare.
           headers:
@@ -120,6 +131,8 @@ paths:
             type: string
             pattern: "^[^/]+\\.wav$"
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "200":
           description: File audio completo.
           content:
@@ -154,6 +167,8 @@ paths:
             type: string
             pattern: "^[^/]+\\.wav$"
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "200":
           description: File audio completo.
           content:
@@ -184,7 +199,7 @@ paths:
         Accetta un WAV PCM non compresso, mono, 16 bit little-endian, 16000 Hz
         e di durata superiore a 0,1 secondi. Il limite predefinito del body è
         2 MiB. Il server trascrive l'audio, genera la risposta e ne sintetizza
-        un nuovo WAV. Questa route non usa X-API-Key.
+        un nuovo WAV. Anche questa route richiede X-API-Key.
       requestBody:
         required: true
         content:
@@ -197,6 +212,8 @@ paths:
               type: string
               format: binary
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "200":
           description: >-
             Comando contenente l'URL assoluto del WAV. Effettuare quindi una
@@ -242,6 +259,8 @@ paths:
             type: string
             pattern: "^[^/]+\\.wav$"
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "200":
           description: File audio completo.
           content:
@@ -269,13 +288,9 @@ paths:
       operationId: askWithTextOrImage
       summary: Invia testo e/o un'immagine
       description: >-
-        Accetta JSON oppure multipart/form-data. Se COSO_API_KEY è configurata,
-        l'header X-API-Key è obbligatorio; con una chiave server vuota il controllo
-        è disabilitato. Il testo può contenere al massimo 20000 caratteri e
+        Accetta JSON oppure multipart/form-data. L'header X-API-Key è sempre
+        obbligatorio. Il testo può contenere al massimo 20000 caratteri e
         l'immagine al massimo 5 MiB con la configurazione predefinita.
-      security:
-        - ApiKeyAuth: []
-        - {}
       requestBody:
         required: true
         content:
@@ -294,6 +309,8 @@ paths:
             schema:
               $ref: "#/components/schemas/MultipartAskRequest"
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "200":
           description: Risposta del modello.
           content:
@@ -302,15 +319,6 @@ paths:
                 $ref: "#/components/schemas/AskResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
-        "401":
-          description: API key mancante o non valida.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                error: unauthorized
-                message: API key mancante o non valida.
         "502":
           $ref: "#/components/responses/UpstreamError"
 
@@ -418,6 +426,15 @@ components:
           type: string
 
   responses:
+    Unauthorized:
+      description: API key mancante o non valida.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: unauthorized
+            message: API key mancante o non valida.
     ValidationError:
       description: Richiesta non valida.
       content:
