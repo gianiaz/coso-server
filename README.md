@@ -74,6 +74,33 @@ formattazione, per esempio «asterisco asterisco».
 
 Ogni testo inviato a Piper viene preceduto dal prefisso `"... "`.
 
+Prima di pubblicare il WAV, il server elabora l'audio con SoX usando questa
+catena di effetti, nell'ordine indicato:
+
+```text
+norm -3 highpass 100 pitch -40 bass +2 compand 0.1,0.2 6:-60,-30,-10 -3 -90 0.1 echo 0.8 0.8 15 0.3
+```
+
+Il WAV finale rimane PCM mono a 16 bit alla frequenza originale di Piper.
+Solo il file elaborato e validato viene pubblicato; se Piper o SoX falliscono,
+il server restituisce un errore e conserva l'eventuale WAV precedente.
+I file temporanei vengono eliminati anche in caso di errore.
+I saluti preregistrati non passano attraverso questa elaborazione.
+Il log temporale `sox_processing` misura la fase SoX.
+
+Per un Raspberry gia installato, aggiungi la dipendenza di sistema prima
+di distribuire questa versione:
+
+```bash
+sudo apt update
+sudo apt install -y sox
+sox --version
+```
+
+Il webhook aggiorna le dipendenze Python, mentre SoX va installato con `apt`.
+Docker lo include nell'immagine. `SOX_PATH` indica l'eseguibile (predefinito
+`sox`); su Windows puoi impostare il percorso completo a `sox.exe`.
+
 Per l'installazione nativa, dopo `pip install -r requirements.txt` scarica
 il modello ONNX e il JSON corrispondente:
 
@@ -237,7 +264,7 @@ un modello successivo. Il Pi Zero originale ARMv6 non e una piattaforma
 supportata da questa installazione. Per avviare senza Docker:
 
 ```bash
-sudo apt install python3-venv ffmpeg
+sudo apt install python3-venv ffmpeg sox
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt

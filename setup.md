@@ -28,7 +28,7 @@ Se il tuo nome utente è diverso, sostituisci `giovanni` nei percorsi e nel serv
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-pip python3-venv python3-dev ffmpeg
+sudo apt install -y git python3 python3-pip python3-venv python3-dev ffmpeg sox
 ```
 
 `python3-dev` fornisce gli header di Python necessari alla compilazione delle
@@ -43,6 +43,7 @@ per la trascrizione audio. Verifica l'installazione:
 ```bash
 ffmpeg -version
 ffprobe -version
+sox --version
 ```
 
 La sintesi vocale usa `piper-tts`, installato nei passi successivi, con la

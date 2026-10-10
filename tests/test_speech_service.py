@@ -1,16 +1,34 @@
 import wave
+import subprocess
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
 from app.services.speech_service import (
     MAX_FILENAME_STEM_LENGTH,
+    SOX_EFFECTS,
     SpeechService,
     SpeechGenerationError,
     filename_for_text,
     slugify,
     text_for_speech,
 )
+
+
+@pytest.fixture(autouse=True)
+def sox_run(monkeypatch):
+    def process(arguments, **kwargs):
+        with wave.open(arguments[3], "rb") as raw:
+            params = raw.getparams()
+        with wave.open(arguments[14], "wb") as processed:
+            processed.setparams(params)
+            processed.writeframes(b"\x01\x00" * params.nframes)
+        return subprocess.CompletedProcess(arguments, 0)
+
+    run = Mock(side_effect=process)
+    monkeypatch.setattr("app.services.speech_service.subprocess.run", run)
+    return run
 
 
 def test_slugify_italian_text():
@@ -61,7 +79,7 @@ def write_audio(text, wav_file, *, syn_config):
     wav_file.writeframes(b"\x00\x00" * 2205)
 
 
-def test_generates_wav_with_piper_and_reuses_model(tmp_path):
+def test_generates_wav_with_piper_and_reuses_model(tmp_path, sox_run):
     service = SpeechService(
         output_dir=tmp_path, model_path=tmp_path / "paola.onnx", length_scale=1.2
     )
@@ -77,12 +95,56 @@ def test_generates_wav_with_piper_and_reuses_model(tmp_path):
     assert first_call.args[0] == "... Ciao, sono Coso, come stai?"
     assert voice.synthesize_wav.call_args_list[1].args[0] == "... Seconda risposta."
     assert first_call.kwargs["syn_config"].length_scale == 1.2
+    assert sox_run.call_count == 2
+    arguments = sox_run.call_args_list[0].args[0]
+    assert arguments[:3] == ["sox", "-t", "wav"]
+    assert arguments[4:14] == ["-t", "wav", "-e", "signed-integer", "-b", "16", "-c", "1", "-r", "22050"]
+    assert arguments[15:] == list(SOX_EFFECTS)
+    assert sox_run.call_args.kwargs == {
+        "check": True, "capture_output": True, "text": True, "timeout": 90,
+    }
     with wave.open(str(tmp_path / filename), "rb") as audio:
         assert audio.getnchannels() == 1
         assert audio.getsampwidth() == 2
         assert audio.getframerate() == 22_050
         assert audio.getnframes() == 2205
+        assert audio.readframes(1) == b"\x01\x00"
     assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("failure", ["missing", "exit", "timeout", "invalid", "rate"])
+def test_sox_failure_preserves_previous_wav_and_cleans_temporary(tmp_path, sox_run, failure):
+    service = SpeechService(output_dir=tmp_path, model_path=tmp_path / "paola.onnx",
+                            sox_path="/custom path/sox")
+    destination = tmp_path / filename_for_text("Ciao")
+    destination.write_bytes(b"previous-audio")
+    voice = Mock()
+    voice.synthesize_wav.side_effect = write_audio
+
+    def fail(arguments, **kwargs):
+        assert arguments[0] == "/custom path/sox"
+        output = Path(arguments[14])
+        output.write_bytes(b"partial-output")
+        if failure == "missing":
+            raise FileNotFoundError("sox")
+        if failure == "exit":
+            raise subprocess.CalledProcessError(1, arguments, stderr="bad effect")
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(arguments, 90)
+        if failure == "rate":
+            with wave.open(str(output), "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(16000)
+                audio.writeframes(b"\x00\x00" * 100)
+        return subprocess.CompletedProcess(arguments, 0)
+
+    sox_run.side_effect = fail
+    with patch("app.services.speech_service.PiperVoice.load", return_value=voice):
+        with pytest.raises(SpeechGenerationError, match="SoX"):
+            service.generate("Ciao")
+    assert destination.read_bytes() == b"previous-audio"
+    assert list(tmp_path.iterdir()) == [destination]
 
 
 def test_piper_failure_preserves_previous_wav_and_cleans_temporary(tmp_path):

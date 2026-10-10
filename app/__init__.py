@@ -66,6 +66,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             str(Path(__file__).resolve().parent.parent / "data" / "voices" / "it_IT-paola-medium.onnx"),
         ),
         PIPER_LENGTH_SCALE=float(os.getenv("PIPER_LENGTH_SCALE", "1.25")),
+        SOX_PATH=os.getenv("SOX_PATH", "sox"),
     )
 
     if test_config:
@@ -110,6 +111,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         output_dir=Path(app.config["WAV_OUTPUT_DIR"]),
         model_path=Path(app.config["PIPER_MODEL_PATH"]),
         length_scale=app.config["PIPER_LENGTH_SCALE"],
+        sox_path=app.config["SOX_PATH"],
     )
     install_request_timing(app)
     app.before_request(authenticate_request)
