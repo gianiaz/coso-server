@@ -24,7 +24,7 @@ nativa di [setup.md](setup.md), non quella Docker.
 
 ## Installazione
 
-Gli esempi assumono utente `pi`, checkout `/home/pi/coso-server`, branch `main`
+Gli esempi assumono utente `giovanni`, checkout `/home/giovanni/coso-server`, branch `main`
 e servizio esistente `coso-server.service`. Sostituisci utente e percorsi nei
 file e nei comandi se la tua installazione è diversa.
 
@@ -32,9 +32,9 @@ Il webhook usa una virtualenv separata, fuori dal repository, così pip non
 modifica le dipendenze del processo che riceve i webhook durante il deploy:
 
 ```bash
-cd /home/pi/coso-server
-python3 -m venv /home/pi/coso-deploy-venv
-/home/pi/coso-deploy-venv/bin/python -m pip install -r deploy/requirements.txt
+cd /home/giovanni/coso-server
+python3 -m venv /home/giovanni/coso-deploy-venv
+/home/giovanni/coso-deploy-venv/bin/python -m pip install -r deploy/requirements.txt
 sudo install -o root -g root -m 600 deploy/webhook.env.example /etc/coso-deploy.env
 python3 -c "import secrets; print(secrets.token_hex(32))"
 sudo nano /etc/coso-deploy.env
@@ -44,14 +44,14 @@ Incolla il segreto generato in `DEPLOY_WEBHOOK_SECRET` e verifica
 `DEPLOY_REPOSITORY`, `DEPLOY_BRANCH` e `DEPLOY_DIRECTORY`. Il file viene letto
 da systemd; lo script non carica automaticamente file `.env`.
 
-Git e pip vengono eseguiti come `pi`; il checkout e `.venv` devono essere
+Git e pip vengono eseguiti come `giovanni`; il checkout e `.venv` devono essere
 scrivibili da questo utente. Gli eventuali file locali nella directory devono
 essere ignorati da Git: altrimenti il controllo del checkout blocca il deploy.
 Per un repository privato configura una deploy key SSH di sola lettura e
 `known_hosts` per l'utente del servizio. Verifica il pull senza prompt:
 
 ```bash
-sudo -u pi env GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='/usr/bin/ssh -oBatchMode=yes' git -C /home/pi/coso-server ls-remote origin
+sudo -u giovanni env GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='/usr/bin/ssh -oBatchMode=yes' git -C /home/giovanni/coso-server ls-remote origin
 ```
 
 Concedi soltanto il permesso di riavviare Coso Server, senza password:
@@ -60,7 +60,7 @@ Concedi soltanto il permesso di riavviare Coso Server, senza password:
 sudo visudo -cf deploy/coso-deploy.sudoers
 sudo install -o root -g root -m 440 deploy/coso-deploy.sudoers /etc/sudoers.d/coso-deploy
 sudo visudo -c
-sudo -u pi sudo -n -l /usr/bin/systemctl restart coso-server.service
+sudo -u giovanni sudo -n -l /usr/bin/systemctl restart coso-server.service
 sudo install -o root -g root -m 644 deploy/coso-deploy.service /etc/systemd/system/coso-deploy.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now coso-deploy.service

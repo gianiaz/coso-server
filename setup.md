@@ -18,11 +18,11 @@ hostname -I
 
 Gli esempi seguenti assumono:
 
-- utente Linux: `pi`;
-- directory del progetto: `/home/pi/coso-server`;
+- utente Linux: `giovanni`;
+- directory del progetto: `/home/giovanni/coso-server`;
 - porta HTTP: `8000`.
 
-Se il tuo nome utente è diverso, sostituisci `pi` nei percorsi e nel servizio `systemd`.
+Se il tuo nome utente è diverso, sostituisci `giovanni` nei percorsi e nel servizio `systemd`.
 
 ## 2. Installa i pacchetti di sistema
 
@@ -53,7 +53,7 @@ voce italiana Paola medium. Non serve installare il comando `espeak-ng`.
 Se il repository è pubblico, sul Raspberry puoi clonarlo tramite HTTPS senza configurare una chiave SSH:
 
 ```bash
-cd /home/pi
+cd /home/giovanni
 git clone https://github.com/gianiaz/coso-server.git
 cd coso-server
 ```
@@ -102,8 +102,8 @@ OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 
 COSO_API_KEY=una-password-lunga-e-casuale
 
-WAV_OUTPUT_DIR=/home/pi/coso-server/data/wav
-PIPER_MODEL_PATH=/home/pi/coso-server/data/voices/it_IT-paola-medium.onnx
+WAV_OUTPUT_DIR=/home/giovanni/coso-server/data/wav
+PIPER_MODEL_PATH=/home/giovanni/coso-server/data/voices/it_IT-paola-medium.onnx
 PIPER_LENGTH_SCALE=1.0
 
 # Imposta l'indirizzo raggiungibile dall'ESP, senza slash finale.
@@ -215,11 +215,11 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/coso-server
-EnvironmentFile=/home/pi/coso-server/.env
-ExecStart=/home/pi/coso-server/.venv/bin/gunicorn --bind 0.0.0.0:8000 --workers 1 --threads 2 --timeout 90 --access-logfile - wsgi:app
+User=giovanni
+Group=giovanni
+WorkingDirectory=/home/giovanni/coso-server
+EnvironmentFile=/home/giovanni/coso-server/.env
+ExecStart=/home/giovanni/coso-server/.venv/bin/gunicorn --bind 0.0.0.0:8000 --workers 1 --threads 2 --timeout 90 --access-logfile - wsgi:app
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
@@ -229,7 +229,7 @@ PrivateTmp=true
 WantedBy=multi-user.target
 ```
 
-Se non usi l'utente `pi`, modifica `User`, `Group`, `WorkingDirectory`, `EnvironmentFile` ed `ExecStart`.
+Se non usi l'utente `giovanni`, modifica `User`, `Group`, `WorkingDirectory`, `EnvironmentFile` ed `ExecStart`.
 
 Attiva e avvia il servizio:
 
@@ -271,7 +271,7 @@ Per automatizzare questi aggiornamenti con un webhook GitHub firmato e un
 servizio separato sul Raspberry, segui [deploy.md](deploy.md).
 
 ```bash
-cd /home/pi/coso-server
+cd /home/giovanni/coso-server
 git pull --ff-only
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python scripts/download_piper_voice.py
@@ -286,9 +286,9 @@ e leggere i saluti preregistrati in `data/wav/hello` e `data/wav/wakeup`.
 Per correggere proprietario e permessi:
 
 ```bash
-sudo mkdir -p /home/pi/coso-server/data/wav
-sudo chown -R pi:pi /home/pi/coso-server/data/wav
-chmod 755 /home/pi/coso-server/data/wav
+sudo mkdir -p /home/giovanni/coso-server/data/wav
+sudo chown -R giovanni:giovanni /home/giovanni/coso-server/data/wav
+chmod 755 /home/giovanni/coso-server/data/wav
 ```
 
 ## 12. Risoluzione dei problemi
@@ -337,8 +337,8 @@ directory WAV. Le vecchie variabili `ESPEAK_*` vanno sostituite con
 
 ```bash
 .venv/bin/python scripts/download_piper_voice.py
-.venv/bin/python -m piper -m data/voices/it_IT-paola-medium.onnx -f /home/pi/coso-server/data/wav/prova.wav -- "Prova audio"
-ls -lh /home/pi/coso-server/data/wav/prova.wav
+.venv/bin/python -m piper -m data/voices/it_IT-paola-medium.onnx -f /home/giovanni/coso-server/data/wav/prova.wav -- "Prova audio"
+ls -lh /home/giovanni/coso-server/data/wav/prova.wav
 ```
 
 ### L'ESP non riesce a scaricare il WAV

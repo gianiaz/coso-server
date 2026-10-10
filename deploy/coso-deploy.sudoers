@@ -1,2 +1,2 @@
 # Install as /etc/sudoers.d/coso-deploy (root:root, mode 440), check with visudo.
-pi ALL=(root) NOPASSWD: /usr/bin/systemctl restart coso-server.service
+giovanni ALL=(root) NOPASSWD: /usr/bin/systemctl restart coso-server.service
