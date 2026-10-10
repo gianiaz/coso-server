@@ -28,13 +28,13 @@ Gli esempi assumono utente `giovanni`, checkout `/home/giovanni/coso-server`, br
 e servizio esistente `coso-server.service`. Sostituisci utente e percorsi nei
 file e nei comandi se la tua installazione è diversa.
 
-Il webhook usa una virtualenv separata, fuori dal repository, così pip non
+Il webhook usa una virtualenv separata in `.venv-deploy`, ignorata da Git, così pip non
 modifica le dipendenze del processo che riceve i webhook durante il deploy:
 
 ```bash
 cd /home/giovanni/coso-server
-python3 -m venv /home/giovanni/coso-deploy-venv
-/home/giovanni/coso-deploy-venv/bin/python -m pip install -r deploy/requirements.txt
+python3 -m venv /home/giovanni/coso-server/.venv-deploy
+/home/giovanni/coso-server/.venv-deploy/bin/python -m pip install -r deploy/requirements.txt
 sudo install -o root -g root -m 600 deploy/webhook.env.example /etc/coso-deploy.env
 python3 -c "import secrets; print(secrets.token_hex(32))"
 sudo nano /etc/coso-deploy.env

@@ -11,7 +11,7 @@ WorkingDirectory=/home/giovanni/coso-server
 EnvironmentFile=/etc/coso-deploy.env
 Environment=PYTHONUNBUFFERED=1
 Environment=GIT_SSH_COMMAND=/usr/bin/ssh -oBatchMode=yes
-ExecStart=/home/giovanni/coso-deploy-venv/bin/gunicorn --bind 127.0.0.1:9000 --workers 1 --threads 2 --timeout 30 --access-logfile - --error-logfile - --log-level info scripts.deploy_webhook:create_app()
+ExecStart=/home/giovanni/coso-server/.venv-deploy/bin/gunicorn --bind 127.0.0.1:9000 --workers 1 --threads 2 --timeout 30 --access-logfile - --error-logfile - --log-level info scripts.deploy_webhook:create_app()
 Restart=on-failure
 RestartSec=5
 PrivateTmp=true
