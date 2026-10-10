@@ -59,7 +59,7 @@ def filename_for_text(text: str) -> str:
 
 class SpeechService:
     def __init__(
-        self, *, output_dir: Path, model_path: Path, length_scale: float = 1.0
+        self, *, output_dir: Path, model_path: Path, length_scale: float = 1.25
     ) -> None:
         self.output_dir = output_dir
         self.model_path = model_path
@@ -85,7 +85,7 @@ class SpeechService:
                         self._voice = PiperVoice.load(str(self.model_path))
                 with wave.open(str(temporary), "wb") as wav_file:
                     self._voice.synthesize_wav(
-                        text, wav_file, syn_config=self._synthesis_config
+                        "... " + text, wav_file, syn_config=self._synthesis_config
                     )
                 with wave.open(str(temporary), "rb") as wav_file:
                     if (wav_file.getnchannels() != 1 or wav_file.getsampwidth() != 2

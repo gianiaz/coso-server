@@ -74,7 +74,8 @@ def test_generates_wav_with_piper_and_reuses_model(tmp_path):
 
     assert filename == "ciao-sono-coso-come-stai.wav"
     first_call = voice.synthesize_wav.call_args_list[0]
-    assert first_call.args[0] == "Ciao, sono Coso, come stai?"
+    assert first_call.args[0] == "... Ciao, sono Coso, come stai?"
+    assert voice.synthesize_wav.call_args_list[1].args[0] == "... Seconda risposta."
     assert first_call.kwargs["syn_config"].length_scale == 1.2
     with wave.open(str(tmp_path / filename), "rb") as audio:
         assert audio.getnchannels() == 1

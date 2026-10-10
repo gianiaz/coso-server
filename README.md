@@ -72,6 +72,8 @@ Prima della sintesi, il server rimuove la formattazione Markdown più comune
 contenuto e il testo dei link. Questo evita che la voce legga i simboli di
 formattazione, per esempio «asterisco asterisco».
 
+Ogni testo inviato a Piper viene preceduto dal prefisso `"... "`.
+
 Per l'installazione nativa, dopo `pip install -r requirements.txt` scarica
 il modello ONNX e il JSON corrispondente:
 
@@ -203,7 +205,7 @@ Le variabili principali sono documentate in `.env.example`.
 - `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TIMEOUT_SECONDS`: limiti della chiamata upstream.
 - `MAX_REQUEST_BYTES`, `MAX_AUDIO_BYTES`, `MAX_IMAGE_BYTES`, `MAX_TEXT_LENGTH`: limiti degli input.
 - `PIPER_MODEL_PATH`: percorso del modello ONNX; predefinito `data/voices/it_IT-paola-medium.onnx` nella directory del progetto.
-- `PIPER_LENGTH_SCALE`: fattore di durata della voce, positivo e finito; predefinito `1.0`.
+- `PIPER_LENGTH_SCALE`: fattore di durata della voce, positivo e finito; predefinito `1.25`.
 
 La chiave OpenAI non viene mai inviata al client e le richieste upstream usano
 `store=false`. Coso Server non conserva immagini o registrazioni; salva localmente

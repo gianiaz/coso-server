@@ -65,7 +65,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             "PIPER_MODEL_PATH",
             str(Path(__file__).resolve().parent.parent / "data" / "voices" / "it_IT-paola-medium.onnx"),
         ),
-        PIPER_LENGTH_SCALE=float(os.getenv("PIPER_LENGTH_SCALE", "1.0")),
+        PIPER_LENGTH_SCALE=float(os.getenv("PIPER_LENGTH_SCALE", "1.25")),
     )
 
     if test_config:
@@ -74,6 +74,11 @@ def create_app(test_config: dict | None = None) -> Flask:
     api_key = app.config["COSO_API_KEY"]
     if not isinstance(api_key, str) or not api_key.strip():
         raise RuntimeError("COSO_API_KEY obbligatoria: configura una chiave non vuota")
+
+    # Flask resolves relative send_from_directory paths against app.root_path;
+    # greeting discovery and speech generation use the process working directory.
+    # Resolve once so all producers and downloads use the same directory.
+    app.config["WAV_OUTPUT_DIR"] = str(Path(app.config["WAV_OUTPUT_DIR"]).resolve())
 
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO").upper(),

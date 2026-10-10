@@ -97,6 +97,29 @@ def test_health(client):
     assert response.json == {"service": "coso-server", "status": "ok"}
 
 
+@pytest.mark.parametrize("folder", ["hello", "wakeup", ""])
+def test_relative_wav_directory_download(tmp_path, monkeypatch, folder):
+    monkeypatch.chdir(tmp_path)
+    application = create_app({
+        "TESTING": True, "COSO_API_KEY": "secret", "WAV_OUTPUT_DIR": "data/wav",
+    })
+    directory = tmp_path / "data" / "wav" / folder
+    directory.mkdir(parents=True, exist_ok=True)
+    audio = make_wav()
+    (directory / "ciao.wav").write_bytes(audio)
+    client = application.test_client()
+    client.environ_base["HTTP_X_API_KEY"] = "secret"
+    if folder:
+        command = client.get(f"/{folder}")
+        assert command.status_code == 200
+        download = client.get(command.json["wav"])
+    else:
+        download = client.get("/wav/ciao.wav")
+    assert download.status_code == 200
+    assert download.mimetype == "audio/wav"
+    assert download.data == audio
+
+
 @pytest.mark.parametrize("greeting", ["hello", "wakeup"])
 @pytest.mark.parametrize("public_base_url", ["", "https://coso.example/"])
 def test_greeting_selects_existing_wav(client, app, monkeypatch, public_base_url, greeting):

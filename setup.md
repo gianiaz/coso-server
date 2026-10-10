@@ -104,7 +104,7 @@ COSO_API_KEY=la-stessa-chiave-configurata-in-buddy
 
 WAV_OUTPUT_DIR=/home/giovanni/coso-server/data/wav
 PIPER_MODEL_PATH=/home/giovanni/coso-server/data/voices/it_IT-paola-medium.onnx
-PIPER_LENGTH_SCALE=1.0
+PIPER_LENGTH_SCALE=1.25
 
 # Imposta l'indirizzo raggiungibile dall'ESP, senza slash finale.
 WAV_PUBLIC_BASE_URL=http://192.168.1.50:8000
