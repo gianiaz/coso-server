@@ -7,7 +7,7 @@ from flask import Flask, jsonify
 from app.routes import api
 from app.auth import authenticate_request
 from app.services.openai_service import OpenAIService
-from app.services.memory_service import MemoryService
+from app.services.memory_service import DEFAULT_MEMORY_KEYWORDS, MemoryService
 from app.services.speech_service import SpeechService
 from app.services.transcription_service import TranscriptionService, WhistleTranscriptionService
 from app.timing import install_request_timing
@@ -40,6 +40,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         OPENAI_MODEL=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
         TRANSCRIPTION_BACKEND=os.getenv("TRANSCRIPTION_BACKEND", "whistle"),
         MEMORY_ROUTER_MODEL=os.getenv("MEMORY_ROUTER_MODEL", "gpt-4o-mini"),
+        MEMORY_ACTIVATION_KEYWORDS=os.getenv("MEMORY_ACTIVATION_KEYWORDS", DEFAULT_MEMORY_KEYWORDS),
         MEMORY_DB_PATH=os.getenv(
             "MEMORY_DB_PATH",
             str(Path(__file__).resolve().parent.parent / "data" / "memory.sqlite3"),
@@ -107,6 +108,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         model=app.config["MEMORY_ROUTER_MODEL"],
         timeout=app.config["OPENAI_TIMEOUT_SECONDS"],
         result_limit=app.config["MEMORY_RESULT_LIMIT"],
+        activation_keywords=app.config["MEMORY_ACTIVATION_KEYWORDS"],
     )
     if app.config["TRANSCRIPTION_BACKEND"] == "whistle":
         app.extensions["transcription_service"] = WhistleTranscriptionService()

@@ -15,13 +15,7 @@ from app.timing import log_statistics, timed_phase
 
 LOGGER = logging.getLogger(__name__)
 
-# Exact matches only: never bypass a message containing personal facts or a
-# reference to a previous conversation merely because it starts with a greeting.
-NO_MEMORY_PHRASES = frozenset({
-    "ciao", "salve", "buongiorno", "buonasera", "grazie", "grazie mille",
-    "come ti chiami", "che ore sono", "che ora è", "che ora sono",
-    "dimmi come ti chiami", "dimmi come ti chiami che ora sono",
-})
+DEFAULT_MEMORY_KEYWORDS = "ricorda,ricordati,ricordi,memorizza,memoria"
 
 
 class MemoryModelTiming(BaseCallbackHandler):
@@ -205,9 +199,20 @@ class MemoryService:
         model: str,
         timeout: int,
         result_limit: int = 6,
+        activation_keywords: str = DEFAULT_MEMORY_KEYWORDS,
     ) -> None:
         self.store = SQLiteMemoryStore(database_path)
         self.model = model
+        # Whole words (or phrases), case insensitive. An empty list disables
+        # memory activation; the ordinary answer still receives the full text.
+        keywords = [keyword.strip().casefold() for keyword in activation_keywords.split(",")
+                    if keyword.strip()]
+        self._activation_pattern = (
+            re.compile(r"(?<!\w)(?:" + "|".join(
+                r"\s+".join(re.escape(word) for word in keyword.split())
+                for keyword in keywords) + r")(?!\w)")
+            if keywords else None
+        )
         self.result_limit = max(1, min(result_limit, 20))
         if api_key:
             chat_model = ChatOpenAI(
@@ -248,13 +253,14 @@ class MemoryService:
         )
 
     def process(self, text: str) -> MemoryResult:
-        normalized = re.sub(r"[.!?,;:]+", " ", text.casefold())
-        normalized = " ".join(normalized.split())
+        triggered = bool(self._activation_pattern and
+                         self._activation_pattern.search(text.casefold()))
         bypass = ("empty" if not text.strip() else
                   "router_disabled" if self._router is None else
-                  "simple_phrase" if normalized in NO_MEMORY_PHRASES else None)
+                  "no_keyword" if not triggered else None)
         if bypass:
             log_statistics("Memory", {"model": self.model, "bypass": bypass,
+                                      "keyword_triggered": triggered,
                                       "text_characters": len(text), "outcome": "ok"})
             analysis = IntentAnalysis(
                 should_save=False,
@@ -268,7 +274,7 @@ class MemoryService:
         started = perf_counter()
         callback = MemoryModelTiming()
         stats = {"model": self.model, "text_characters": len(text),
-                 "bypass": None, "outcome": "ok"}
+                 "bypass": None, "keyword_triggered": True, "outcome": "ok"}
         try:
             classification_started = perf_counter()
             with timed_phase("memory_classification"):

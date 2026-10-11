@@ -64,7 +64,7 @@ def test_service_saves_only_durable_information(tmp_path):
     )
     service = make_service(tmp_path, durable)
 
-    result = service.process("Nel progetto uso una ESP32-S3")
+    result = service.process("Ricorda: nel progetto uso una ESP32-S3")
 
     assert result.saved
     assert result.analysis.category == "diy_esp32"
@@ -78,7 +78,7 @@ def test_service_saves_only_durable_information(tmp_path):
         tags=["pioggia"],
         summary="Non deve essere salvata",
     )
-    transient = service.process("Pioverà oggi?")
+    transient = service.process("Ricordi se pioverà oggi?")
     assert not transient.saved
     assert transient.analysis.summary == ""
     assert service.store.search(category="meteo", tags=[], limit=5) == []
@@ -99,7 +99,7 @@ def test_service_recovers_relevant_context_without_saving_question(tmp_path):
         tags=["scheda"],
     )
 
-    result = service.process("Quale scheda uso nel progetto?")
+    result = service.process("Ti ricordi quale scheda uso nel progetto?")
 
     assert not result.saved
     assert [record.summary for record in result.contexts] == [
@@ -112,26 +112,30 @@ def test_router_failure_does_not_break_the_main_request(tmp_path):
     service = make_service(tmp_path, {})
     service._router = FakeRouter(None)
 
-    result = service.process("Quale scheda uso?")
+    result = service.process("Ricordi quale scheda uso?")
 
     assert not result.saved
     assert result.contexts == ()
 
 
 @pytest.mark.parametrize("text", ["Ciao!", " COME TI CHIAMI? ",
-                                 "Dimmi come ti chiami che ora sono."])
-def test_simple_phrases_skip_remote_classification(tmp_path, text, caplog):
+                                 "Quante nazioni ci sono in Europa?",
+                                 "Nel progetto uso una ESP32-S3", "smemorizzato",
+                                 "Come funziona la memorizzazione?"])
+def test_messages_without_keywords_skip_remote_classification(tmp_path, text, caplog):
     service = make_service(tmp_path, None)
     with caplog.at_level(logging.INFO):
         result = service.process(text)
     assert service._router.calls == []
     assert not result.saved and not result.contexts
-    assert '"bypass": "simple_phrase"' in caplog.text
+    assert '"bypass": "no_keyword"' in caplog.text
 
 
-@pytest.mark.parametrize("text", ["Ciao, mi chiamo Giovanni", "Come ti chiami nel mio progetto?",
-                                 "Grazie, ricorda che uso una ESP32-S3"])
-def test_bypass_preserves_personal_facts_and_context_questions(tmp_path, text):
+@pytest.mark.parametrize("text", ["RICORDA, mi chiamo Giovanni", "Ti ricordi la scheda?",
+                                 "Grazie, ricorda che uso una ESP32-S3",
+                                 "Ricordati: uso una ESP32", "Memorizza il mio nome",
+                                 "Cosa hai in memoria?"])
+def test_keywords_activate_memory(tmp_path, text):
     service = make_service(tmp_path, IntentAnalysis(
         should_save=False, needs_context=False, category="generale", tags=[], summary=""))
     service.process(text)
@@ -143,13 +147,43 @@ def test_memory_statistics_do_not_include_personal_content(tmp_path, caplog):
         should_save=True, needs_context=False, category="famiglia", tags=["figlio"],
         summary="Mio figlio si chiama Mario"))
     with caplog.at_level(logging.INFO):
-        service.process("Mio figlio si chiama Mario")
+        service.process("Ricorda: mio figlio si chiama Mario")
     record = next(record for record in caplog.records if "[Memory]" in record.message)
     stats = json.loads(record.message.split(" ", 3)[3])
     assert stats["saved"] is True
     assert stats["needs_context"] is False
     assert stats["classification_duration_ms"] >= 0
     assert "Mario" not in caplog.text
+
+
+@pytest.mark.parametrize("keywords,text,activated", [
+    ("annota,richiama", "Annota il mio nome", True),
+    ("annota,richiama", "Ricorda il mio nome", False),
+    ("usa memoria", "USA   MEMORIA: quale scheda uso?", True),
+    ("usa memoria", "riusa memoria", False),
+    ("", "Ricorda il mio nome", False),
+    (" , ", "Ricorda il mio nome", False),
+])
+def test_custom_activation_keywords(tmp_path, keywords, text, activated):
+    service = MemoryService(database_path=tmp_path / "memory.sqlite3", api_key="",
+                            base_url="https://api.openai.com/v1", model="test",
+                            timeout=2, activation_keywords=keywords)
+    service._router = FakeRouter(IntentAnalysis(
+        should_save=False, needs_context=False, category="generale", tags=[], summary=""))
+    service.process(text)
+    assert bool(service._router.calls) is activated
+
+
+def test_no_keyword_skips_both_database_operations(tmp_path, monkeypatch):
+    service = make_service(tmp_path, None)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Memory database accessed without an activation keyword")
+
+    monkeypatch.setattr(service.store, "search", unexpected)
+    monkeypatch.setattr(service.store, "save", unexpected)
+    result = service.process("Nel progetto uso una ESP32-S3")
+    assert not result.saved and not result.contexts
 
 
 def test_model_callback_records_duration_and_usage():

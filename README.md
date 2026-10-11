@@ -228,19 +228,27 @@ Risposta:
 
 ## Memoria a lungo termine
 
-I messaggi testuali passano prima attraverso un router leggero con output
+Solo i messaggi che contengono una parola chiave della memoria passano attraverso
+un router leggero con output
 strutturato. Il router distingue i fatti durevoli (per esempio componenti di un
 progetto, configurazioni domotiche o informazioni familiari) dalle interazioni
 transitorie. Solo i fatti durevoli vengono sintetizzati e salvati in SQLite con
 categoria, tag e timestamp.
 
-Una lista limitata di frasi esatte (saluti, ringraziamenti, domande sul nome e
-sull'ora) evita la chiamata al router. Maiuscole, spazi e punteggiatura vengono
-normalizzati. Una frase aggiuntiva, un fatto personale o un riferimento a un
-progetto mantengono il percorso completo; non si usa un confronto per prefisso.
+`MEMORY_ACTIVATION_KEYWORDS` contiene parole o frasi separate da virgole:
+il valore predefinito è `ricorda,ricordati,ricordi,memorizza,memoria`.
+Il confronto ignora le maiuscole e rispetta i confini delle parole:
+`memorizzazione` non attiva `memorizza`. Le frasi ammettono spazi multipli.
+Per salvare: «Ricorda che nel progetto uso una ESP32-S3».
+Per recuperare: «Ti ricordi quale scheda uso nel progetto?».
+Senza parole chiave non si classifica, non si legge e non si salva la memoria,
+anche se il messaggio contiene un fatto personale. Il testo completo viene
+comunque inviato al modello della risposta. I ricordi già salvati restano nel
+database. Una lista vuota disattiva l'attivazione della memoria.
 
 Il riepilogo INFO `[Memory]`, correlato all'ID richiesta, riporta modello,
-eventuale motivo del bypass, numero di caratteri, durata della classificazione,
+eventuale motivo del bypass (`no_keyword` quando manca una parola chiave),
+`keyword_triggered`, numero di caratteri, durata della classificazione,
 durata del modello misurata tramite callback, token quando disponibili, decisioni
 `should_save`/`needs_context`, numero di ricordi e risultato del salvataggio.
 Il tempo del modello include SDK, rete e servizio remoto: non misura separatamente
@@ -267,6 +275,7 @@ Le variabili principali sono documentate in `.env.example`.
 - `TRANSCRIPTION_BACKEND`: `whistle` (predefinito, locale) oppure `openai`.
 - `OPENAI_TRANSCRIPTION_MODEL`: modello speech-to-text usato solo con backend `openai`; predefinito `gpt-4o-mini-transcribe`.
 - `MEMORY_ROUTER_MODEL`: modello economico per classificazione ed estrazione; predefinito `gpt-4o-mini`.
+- `MEMORY_ACTIVATION_KEYWORDS`: parole/frasi di attivazione separate da virgole; predefinito `ricorda,ricordati,ricordi,memorizza,memoria`.
 - `MEMORY_DB_PATH`: percorso del database SQLite persistente.
 - `MEMORY_RESULT_LIMIT`: massimo numero di ricordi iniettati in una risposta; predefinito `6`.
 - `COSO_API_KEY`: obbligatoria su tutte le route tramite `X-API-Key`, inclusi healthcheck e WAV; il server non parte se e vuota.
