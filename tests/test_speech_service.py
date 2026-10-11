@@ -1,7 +1,11 @@
 import wave
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import Mock, patch
+from types import SimpleNamespace
+
+from flask import Flask, g
 
 import pytest
 
@@ -204,3 +208,73 @@ def test_piper_empty_audio_is_rejected(tmp_path):
 def test_invalid_piper_speed_is_rejected(tmp_path, scale):
     with pytest.raises(ValueError, match="PIPER_LENGTH_SCALE"):
         SpeechService(output_dir=tmp_path, model_path=tmp_path / "paola.onnx", length_scale=scale)
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_speech_logs_runtime_and_audio_speed(tmp_path, caplog, monkeypatch, fail):
+    caplog.set_level("INFO")
+    clock = [100.0]
+    monkeypatch.setattr("app.services.speech_service.perf_counter", lambda: clock[0])
+    system_files = {
+        "/proc/device-tree/model": "Raspberry Pi 3 Model B",
+        "/sys/class/thermal/thermal_zone0/temp": "65000",
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq": "1200000",
+    }
+    monkeypatch.setattr("app.services.speech_service._read_system_file", system_files.get)
+    monkeypatch.setattr("app.services.speech_service.platform.machine", lambda: "aarch64")
+    monkeypatch.setattr("app.services.speech_service.os.cpu_count", lambda: 4)
+    monkeypatch.setattr("app.services.speech_service.os.sched_getaffinity",
+                        lambda _: {0, 1, 2, 3}, raising=False)
+    voice = Mock()
+    voice.session.get_providers.return_value = ["CPUExecutionProvider"]
+    voice.session.get_session_options.return_value = SimpleNamespace(
+        intra_op_num_threads=0, inter_op_num_threads=0,
+        execution_mode="ORT_SEQUENTIAL", graph_optimization_level="ORT_ENABLE_ALL")
+
+    def synthesize(*args, **kwargs):
+        clock[0] += .25
+        write_audio(*args, **kwargs)
+        if fail:
+            raise RuntimeError("test failure")
+
+    voice.synthesize_wav.side_effect = synthesize
+    service = SpeechService(output_dir=tmp_path, model_path=tmp_path / "it_IT-serena-high.onnx")
+    with Flask(__name__).test_request_context("/ask"):
+        g.timing_id = "speech-123"
+        with patch("app.services.speech_service.PiperVoice.load", return_value=voice):
+            if fail:
+                with pytest.raises(SpeechGenerationError):
+                    service.generate("Testo privato")
+            else:
+                service.generate("Testo privato")
+                service.generate("Seconda risposta")
+    messages = [record.getMessage() for record in caplog.records]
+    runtime = [message for message in messages if message.startswith("[PiperRuntime]")]
+    assert len(runtime) == 1
+    info = json.loads(runtime[0].split(" ", 3)[3])
+    assert info["model"] == "it_IT-serena-high"
+    assert info["model_path"] == str(service.model_path.resolve())
+    assert info["board"] == "Raspberry Pi 3 Model B"
+    assert info["architecture"] == "aarch64"
+    assert info["cpu_count"] == info["cpu_affinity_count"] == 4
+    assert info["providers"] == ["CPUExecutionProvider"]
+    assert info["intra_op_num_threads"] == info["inter_op_num_threads"] == 0
+    records = [message for message in messages if message.startswith("[Speech]")]
+    assert all("id=speech-123 " in message for message in runtime + records)
+    assert len(records) == (1 if fail else 2)
+    stats = json.loads(records[0].split(" ", 3)[3])
+    assert stats["outcome"] == ("error" if fail else "ok")
+    assert stats["piper_duration_ms"] == stats["generation_duration_ms"] == 250.0
+    assert stats["cpu_temperature_c"] == stats["cpu_temperature_end_c"] == 65.0
+    assert stats["cpu_frequency_mhz"] == 1200.0
+    assert stats["model_loaded_this_request"] is True
+    if fail:
+        assert stats["audio_seconds"] is None and stats["piper_rtf"] is None
+        assert stats["error_type"] == "RuntimeError"
+    else:
+        assert stats["audio_seconds"] == stats["final_audio_seconds"] == .1
+        assert stats["piper_rtf"] == 2.5
+        assert stats["sample_rate_hz"] == 22050
+        assert stats["wav_bytes"] == 4454
+        assert json.loads(records[1].split(" ", 3)[3])["model_loaded_this_request"] is False
+    assert all("Testo privato" not in message for message in messages)

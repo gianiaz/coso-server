@@ -1,15 +1,19 @@
 import hashlib
 import re
 import math
+import os
+import platform
+import struct
 import subprocess
 import wave
 import unicodedata
 from uuid import uuid4
 from pathlib import Path
 from threading import Lock
+from time import perf_counter
 from piper import PiperVoice, SynthesisConfig
 
-from app.timing import timed_phase
+from app.timing import log_statistics, timed_phase
 
 
 class SpeechGenerationError(RuntimeError):
@@ -24,6 +28,29 @@ SOX_EFFECTS = (
     # Attenuate after normalization and all other effects to retain half amplitude.
     "vol", "0.5",
 )
+
+
+def _read_system_file(path: str) -> str | None:
+    try:
+        return Path(path).read_text(encoding="utf-8").strip("\x00\n ")
+    except (OSError, UnicodeError):
+        return None
+
+
+def _system_number(path: str, divisor: float) -> float | None:
+    value = _read_system_file(path)
+    try:
+        return round(float(value) / divisor, 1) if value is not None else None
+    except ValueError:
+        return None
+
+
+def _cpu_state() -> dict:
+    return {
+        "cpu_temperature_c": _system_number("/sys/class/thermal/thermal_zone0/temp", 1000),
+        "cpu_frequency_mhz": _system_number(
+            "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", 1000),
+    }
 
 
 def validate_wav(path: Path) -> int:
@@ -88,12 +115,52 @@ class SpeechService:
         self._generation_lock = Lock()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    def _log_runtime(self) -> None:
+        stats = {
+            "model_path": str(self.model_path.resolve()),
+            "model": self.model_path.stem,
+            "board": _read_system_file("/proc/device-tree/model"),
+            "architecture": platform.machine(),
+            "python_bits": struct.calcsize("P") * 8,
+            "cpu_count": os.cpu_count(),
+        }
+        try:
+            stats["cpu_affinity_count"] = len(os.sched_getaffinity(0))
+        except (AttributeError, OSError):
+            stats["cpu_affinity_count"] = None
+        try:
+            session = self._voice.session
+            options = session.get_session_options()
+            stats.update(
+                providers=session.get_providers(),
+                intra_op_num_threads=int(options.intra_op_num_threads),
+                inter_op_num_threads=int(options.inter_op_num_threads),
+                execution_mode=str(options.execution_mode),
+                graph_optimization_level=str(options.graph_optimization_level),
+            )
+        except Exception as exc:
+            # Diagnostic introspection must not stop a working synthesis.
+            stats["session_info_error"] = type(exc).__name__
+        log_statistics("PiperRuntime", stats)
+
     def generate(self, text: str) -> str:
         text = text_for_speech(text)
         if not text:
             raise SpeechGenerationError("Il testo da sintetizzare è vuoto")
         filename = filename_for_text(text)
         destination = self.output_dir / filename
+        generation_started = perf_counter()
+        stats = {
+            "model": self.model_path.stem,
+            "length_scale": self._synthesis_config.length_scale,
+            "text_characters": len(text),
+            "model_loaded_this_request": False,
+            "outcome": "error",
+            "audio_seconds": None,
+            "piper_duration_ms": None,
+            "piper_rtf": None,
+            **_cpu_state(),
+        }
 
         with timed_phase("speech_lock_wait"):
             self._generation_lock.acquire()
@@ -104,13 +171,25 @@ class SpeechService:
                 if self._voice is None:
                     with timed_phase("piper_model_load"):
                         self._voice = PiperVoice.load(str(self.model_path))
-                with timed_phase("piper_synthesis"):
-                    with wave.open(str(temporary), "wb") as wav_file:
-                        self._voice.synthesize_wav(
-                            "... " + text, wav_file, syn_config=self._synthesis_config
-                        )
+                    stats["model_loaded_this_request"] = True
+                    self._log_runtime()
+                synthesis_started = perf_counter()
+                try:
+                    with timed_phase("piper_synthesis"):
+                        with wave.open(str(temporary), "wb") as wav_file:
+                            self._voice.synthesize_wav(
+                                "... " + text, wav_file, syn_config=self._synthesis_config
+                            )
+                finally:
+                    synthesis_seconds = perf_counter() - synthesis_started
+                    stats["piper_duration_ms"] = round(synthesis_seconds * 1000, 1)
                 with timed_phase("piper_wav_validation"):
                     sample_rate = validate_wav(temporary)
+                    with wave.open(str(temporary), "rb") as wav_file:
+                        audio_seconds = wav_file.getnframes() / wav_file.getframerate()
+                    stats["audio_seconds"] = round(audio_seconds, 3)
+                    stats["sample_rate_hz"] = sample_rate
+                    stats["piper_rtf"] = round(synthesis_seconds / audio_seconds, 4)
                 with timed_phase("sox_processing"):
                     try:
                         subprocess.run(
@@ -127,8 +206,14 @@ class SpeechService:
                 with timed_phase("wav_publication"):
                     if validate_wav(processed) != sample_rate:
                         raise SpeechGenerationError("SoX ha modificato la frequenza del WAV")
+                    with wave.open(str(processed), "rb") as wav_file:
+                        stats["final_audio_seconds"] = round(
+                            wav_file.getnframes() / wav_file.getframerate(), 3)
+                    stats["wav_bytes"] = processed.stat().st_size
                     processed.replace(destination)
+                stats["outcome"] = "ok"
             except Exception as exc:
+                stats["error_type"] = type(exc).__name__
                 raise SpeechGenerationError(
                     "Generazione WAV Piper/SoX fallita; verifica modello ONNX, "
                     "configurazione JSON ed eseguibile SoX"
@@ -138,5 +223,8 @@ class SpeechService:
                 processed.unlink(missing_ok=True)
         finally:
             self._generation_lock.release()
+            stats["generation_duration_ms"] = round((perf_counter() - generation_started) * 1000, 1)
+            stats["cpu_temperature_end_c"] = _cpu_state()["cpu_temperature_c"]
+            log_statistics("Speech", stats)
 
         return filename

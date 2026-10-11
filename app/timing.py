@@ -24,6 +24,16 @@ def _log(event: str, **fields) -> None:
     logger.info("[Timing] id=%s utc=%s event=%s %s", request_id, timestamp, event, details)
 
 
+def log_statistics(kind: str, stats: dict) -> None:
+    """Emit a single JSON record correlated with the active request, or standalone."""
+    in_request = has_request_context()
+    logger = current_app.logger if in_request else logging.getLogger(__name__)
+    request_id = getattr(g, "timing_id", "-") if in_request else "-"
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    logger.info("[%s] id=%s utc=%s %s", kind, request_id, timestamp,
+                json.dumps(stats, ensure_ascii=False))
+
+
 def install_request_timing(app) -> None:
     @app.before_request
     def start_request():

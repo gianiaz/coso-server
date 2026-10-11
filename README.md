@@ -435,3 +435,25 @@ su una sola riga. Nessun audio binario o chiave viene aggiunto al record.
 Per confrontare i backend usare lo stesso WAV, separando il primo caricamento
 Whistle dalle richieste successive. Restano disponibili i tempi `[Timing]`
 delle altre fasi e il tempo totale `response_ready`.
+
+Al primo caricamento di Piper, il record INFO `[PiperRuntime]` riporta il
+percorso del modello effettivamente caricato (per esempio `it_IT-serena-high`),
+modello della scheda, architettura, bit di Python, CPU visibili e CPU consentite
+dall'affinita del processo. Include provider ONNX, `intra_op_num_threads`,
+`inter_op_num_threads`, modalita di esecuzione e ottimizzazione del grafo.
+Il valore `0` per i thread indica la scelta automatica di ONNX Runtime, non
+zero thread e non il conteggio dei thread effettivamente attivi.
+
+Ogni generazione aggiunge un record INFO `[Speech]` con lo stesso ID richiesta:
+
+- `model`, `length_scale`, `text_characters`: modello, velocita e lunghezza del testo, senza registrarne il contenuto.
+- `model_loaded_this_request`: distingue la prima richiesta dalle successive.
+- `piper_duration_ms`, `audio_seconds`, `piper_rtf`: tempo di sintesi, durata del WAV grezzo e rapporto tra i due. Un RTF di `3` significa tre secondi di elaborazione per ogni secondo di audio.
+- `final_audio_seconds`, `wav_bytes`, `sample_rate_hz`: durata, dimensione e frequenza del WAV pubblicato dopo SoX.
+- `generation_duration_ms`: tempo complessivo, inclusi attesa del lock, caricamento, sintesi e SoX; le durate annidate non vanno sommate.
+- `cpu_temperature_c`, `cpu_temperature_end_c`, `cpu_frequency_mhz`: temperatura a inizio/fine e frequenza osservata all'inizio. I valori sono `null` se il sistema non espone questi dati.
+- `outcome`, `error_type`: esito e tipo dell'eventuale errore; anche le generazioni fallite producono il record.
+
+Sul Raspberry Pi 3 questi dati consentono di confrontare Serena high con
+altre voci e distinguere il caricamento iniziale dalla sintesi. Temperatura
+e frequenza sono osservazioni istantanee e da sole non dimostrano throttling.
