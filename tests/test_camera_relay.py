@@ -260,11 +260,17 @@ def test_reader_drops_excess_frames_and_does_not_send_api_key(monkeypatch):
 
 @pytest.mark.parametrize('text', ['Cosa vedi?', 'Che cosa vedi davanti a te?', 'Che oggetto è questo?',
                                   'Descrivi quello che vedi.', 'Identifica questo oggetto',
-                                  'Cosa sto inquadrando?', 'Cosa ho davanti?'])
+                                  'Cosa sto inquadrando?', 'Cosa ho davanti?',
+                                  'Descrivi', 'DESCRIVI la stanza', 'Descrivi una ricetta',
+                                  "Parlami dell'immagine.", 'IMMAGINE',
+                                  'Riconosci?', 'Lo riconosci questo animale?',
+                                  'Coso, descrivi: cosa c’è davanti?'])
 def test_visual_questions(text):
     assert is_visual_question(text)
 
 
-@pytest.mark.parametrize('text', ['Perché il cielo è blu?', 'Come vedi il futuro?', "Che cos'è un oggetto?", 'Ciao'])
+@pytest.mark.parametrize('text', ['Perché il cielo è blu?', 'Come vedi il futuro?', "Che cos'è un oggetto?", 'Ciao',
+                                  'Descrivimi una ricetta', 'Un risultato indescrivibile',
+                                  'Ha avuto un riconoscimento', 'Immagineremo una storia'])
 def test_ordinary_questions_do_not_use_camera(text):
     assert not is_visual_question(text)

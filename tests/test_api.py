@@ -221,15 +221,17 @@ def test_ask_generates_wav_from_openai_answer(client, app):
     assert app.extensions["speech_service"].calls == ["Risposta di prova"]
 
 
-def test_visual_voice_question_attaches_camera_jpeg(client, app):
+@pytest.mark.parametrize('question', ['Cosa vedi?', 'Descrivi la stanza',
+                                    "Parlami dell'immagine", 'Lo riconosci?'])
+def test_visual_voice_question_attaches_camera_jpeg(client, app, question):
     from app.services.openai_service import ImageInput
     image = ImageInput(data=b'\xff\xd8photo\xff\xd9', mime_type='image/jpeg')
-    app.extensions['transcription_service'] = SimpleNamespace(transcribe=lambda _: 'Cosa vedi?')
+    app.extensions['transcription_service'] = SimpleNamespace(transcribe=lambda _: question)
     app.extensions['camera_service'] = SimpleNamespace(snapshot=lambda: image)
     response = client.post('/ask', data=make_wav(), content_type='audio/wav')
     assert response.status_code == 200
     assert response.json['type'] == 'command'
-    assert app.extensions['openai_service'].calls == [('Cosa vedi?', image)]
+    assert app.extensions['openai_service'].calls == [(question, image)]
     assert app.extensions['speech_service'].calls == ['Risposta di prova']
 
 

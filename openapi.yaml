@@ -201,8 +201,11 @@ paths:
         2 MiB. Il server trascrive l'audio, genera la risposta e ne sintetizza
         un nuovo WAV. Anche questa route richiede X-API-Key.
         Per domande visive riconosciute localmente (per esempio "Cosa vedi?"
-        o "Che oggetto è questo?") allega un singolo JPEG recente dal servizio
-        camera-relay. Se la camera è disabilitata, scollegata o il fotogramma
+        o "Che oggetto è questo?") oppure quando la trascrizione contiene una
+        delle parole intere "descrivi", "immagine", "riconosci", allega un
+        singolo JPEG recente dal servizio camera-relay. Il confronto ignora
+        maiuscole e accenti; non valuta il significato della domanda.
+        Se la camera è disabilitata, scollegata o il fotogramma
         è obsoleto, restituisce comunque il comando WAV con una spiegazione
         vocale, senza chiamare il modello AI. Il body resta esclusivamente WAV.
       requestBody:

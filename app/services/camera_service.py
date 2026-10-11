@@ -13,7 +13,7 @@ from app.services.openai_service import ImageInput
 
 
 VISUAL_QUESTION = re.compile(
-    r"\b(?:(?:che\s+)?cosa\s+vedi|che\s+(?:oggetto|oggetti)\s+(?:e|sono|vedi)|"
+    r"\b(?:descrivi|immagine|riconosci|(?:che\s+)?cosa\s+vedi|che\s+(?:oggetto|oggetti)\s+(?:e|sono|vedi)|"
     r"(?:cosa|che\s+cosa)\s+(?:sto|stai)\s+inquadrando|"
     r"(?:descrivi|riconosci|identifica)\s+(?:questo|questa|l[' ]?oggetto|"
     r"quello\s+che\s+vedi)|cosa\s+(?:ho|hai)\s+davanti)\b"

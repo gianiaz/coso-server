@@ -236,12 +236,20 @@ un solo client dello stream: usare il relay anche per gli spettatori.
 
 `POST /ask` resta un body WAV. Dopo la trascrizione, frasi come «Cosa vedi?»,
 «Che oggetto è questo?», «Cosa sto inquadrando?» o «Descrivi quello che vedi»
-attivano l'invio di un solo JPEG al modello, insieme alla domanda. Il
-riconoscimento delle frasi è locale e non usa una seconda chiamata AI;
-domande generiche o formulazioni diverse potrebbero non attivare la camera.
+attivano l'invio di un solo JPEG al modello, insieme alla domanda.
+La presenza di almeno una delle parole intere **descrivi**, **immagine** o
+**riconosci** attiva la camera anche senza una frase specifica: per esempio
+«Descrivi la stanza», «Parlami dell'immagine» o «Lo riconosci?».
+Il confronto ignora maiuscole e accenti e accetta punteggiatura e apostrofi;
+non attivano il buffer parole diverse come «descrivimi», «riconoscimento» o
+«immagineremo». Il riconoscimento è locale e non usa una seconda chiamata AI.
+Questa è una regola basata sul testo trascritto, non una classificazione del
+significato: anche «Descrivi una ricetta» allega il fotogramma. Domande senza
+queste parole o le frasi visive previste continuano senza immagine.
 La risposta resta il comando WAV previsto da Buddy, senza modifiche al firmware.
 Il modello configurato deve supportare immagini; `gpt-4.1-mini` è il default
-del progetto. Le immagini vengono inviate a OpenAI solo per domande visive.
+del progetto. Le immagini vengono inviate a OpenAI solo quando si attiva
+questa regola.
 L'API testuale `/api/v1/ask` continua a usare le immagini esplicitamente fornite.
 
 Il fotogramma viene scelto **dopo la trascrizione**, quindi mostra la scena
