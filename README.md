@@ -265,6 +265,20 @@ e il server non mantiene una connessione SQLite residente in memoria.
 Nel container il database è conservato nel volume Docker `memory-data`. In una
 installazione diretta il percorso predefinito è `data/memory.sqlite3`.
 
+Per vedere tutti i ricordi salvati, dal repository:
+
+```bash
+python3 scripts/show_memory.py
+```
+
+Lo script usa solo la libreria standard Python e apre SQLite in sola lettura.
+Mostra ID, categoria, data, tag e riassunto, dal più recente. Legge
+`MEMORY_DB_PATH` dall'ambiente, oppure dal `.env` del repository; altrimenti usa
+`data/memory.sqlite3`. I percorsi configurati relativi sono risolti dal repository.
+Puoi specificare un database diverso con `--db /percorso/memory.sqlite3` oppure
+ottenere JSON con `--json`. Se il database è vuoto mostra zero ricordi; se manca,
+segnala un errore senza crearne uno nuovo.
+
 ## Configurazione
 
 Le variabili principali sono documentate in `.env.example`.
