@@ -1,4 +1,4 @@
-"""Download the Paola voice and matching config without requiring Piper installed."""
+"""Download the Serena high voice and matching config without requiring Piper installed."""
 
 import argparse
 import json
@@ -7,11 +7,10 @@ from pathlib import Path
 from urllib.request import urlopen
 from uuid import uuid4
 
-VOICE = "it_IT-paola-medium"
-REVISION = "375a0fe641dea077c2a47b4e9a056d6da521eed3"
+VOICE = "it_IT-serena-high"
+REVISION = "c704759b2286f5f8c56eb4476169c4e2cda10b02"
 BASE_URL = (
-    f"https://huggingface.co/rhasspy/piper-voices/resolve/{REVISION}"
-    "/it/it_IT/paola/medium"
+    f"https://huggingface.co/committa/it_IT-serena-high/resolve/{REVISION}"
 )
 DEFAULT_DIRECTORY = Path(__file__).resolve().parent.parent / "data" / "voices"
 

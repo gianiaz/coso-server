@@ -63,7 +63,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         WAV_PUBLIC_BASE_URL=os.getenv("WAV_PUBLIC_BASE_URL", ""),
         PIPER_MODEL_PATH=os.getenv(
             "PIPER_MODEL_PATH",
-            str(Path(__file__).resolve().parent.parent / "data" / "voices" / "it_IT-paola-medium.onnx"),
+            str(Path(__file__).resolve().parent.parent / "data" / "voices" / "it_IT-serena-high.onnx"),
         ),
         PIPER_LENGTH_SCALE=float(os.getenv("PIPER_LENGTH_SCALE", "1.25")),
         SOX_PATH=os.getenv("SOX_PATH", "sox"),

@@ -47,7 +47,7 @@ sox --version
 ```
 
 La sintesi vocale usa `piper-tts`, installato nei passi successivi, con la
-voce italiana Paola medium. Non serve installare il comando `espeak-ng`.
+voce italiana Serena high. Non serve installare il comando `espeak-ng`.
 
 ## 3. Scarica il progetto
 
@@ -80,7 +80,7 @@ Lo script scarica modello e configurazione in `data/voices` e riutilizza i
 file se presenti. Per una prova di sintesi:
 
 ```bash
-.venv/bin/python -m piper -m data/voices/it_IT-paola-medium.onnx -f /tmp/coso-test.wav -- "Ciao, sono Coso, come stai?"
+.venv/bin/python -m piper -m data/voices/it_IT-serena-high.onnx -f /tmp/coso-test.wav -- "Ciao, sono Coso, come stai?"
 ls -lh /tmp/coso-test.wav
 ```
 
@@ -104,7 +104,7 @@ OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 COSO_API_KEY=la-stessa-chiave-configurata-in-buddy
 
 WAV_OUTPUT_DIR=/home/giovanni/coso-server/data/wav
-PIPER_MODEL_PATH=/home/giovanni/coso-server/data/voices/it_IT-paola-medium.onnx
+PIPER_MODEL_PATH=/home/giovanni/coso-server/data/voices/it_IT-serena-high.onnx
 PIPER_LENGTH_SCALE=1.25
 
 # Imposta l'indirizzo raggiungibile dall'ESP, senza slash finale.
@@ -341,7 +341,7 @@ directory WAV. Le vecchie variabili `ESPEAK_*` vanno sostituite con
 
 ```bash
 .venv/bin/python scripts/download_piper_voice.py
-.venv/bin/python -m piper -m data/voices/it_IT-paola-medium.onnx -f /home/giovanni/coso-server/data/wav/prova.wav -- "Prova audio"
+.venv/bin/python -m piper -m data/voices/it_IT-serena-high.onnx -f /home/giovanni/coso-server/data/wav/prova.wav -- "Prova audio"
 ls -lh /home/giovanni/coso-server/data/wav/prova.wav
 ```
 

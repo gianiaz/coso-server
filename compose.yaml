@@ -17,7 +17,7 @@ services:
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       MAX_AUDIO_BYTES: "${MAX_AUDIO_BYTES:-2097152}"
       WAV_PUBLIC_BASE_URL: "${WAV_PUBLIC_BASE_URL:-}"
-      PIPER_MODEL_PATH: "${PIPER_MODEL_PATH:-/app/data/voices/it_IT-paola-medium.onnx}"
+      PIPER_MODEL_PATH: "${PIPER_MODEL_PATH:-/app/data/voices/it_IT-serena-high.onnx}"
       PIPER_LENGTH_SCALE: "${PIPER_LENGTH_SCALE:-1.25}"
       SOX_PATH: "${SOX_PATH:-sox}"
     volumes:

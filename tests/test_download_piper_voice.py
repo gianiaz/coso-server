@@ -25,6 +25,10 @@ def test_downloads_matching_model_and_config_once(tmp_path, monkeypatch):
     config = json.loads((tmp_path / f"{VOICE}.onnx.json").read_text())
     assert config["audio"]["sample_rate"] == 22050
     assert len(urls) == 2
+    assert urls[0] == (
+        "https://huggingface.co/committa/it_IT-serena-high/resolve/"
+        "c704759b2286f5f8c56eb4476169c4e2cda10b02/it_IT-serena-high.onnx"
+    )
     assert urls[1] == urls[0] + ".json"
     download_voice(tmp_path)
     assert len(urls) == 2

@@ -62,7 +62,7 @@ restituisce HTTP 503 con `error: hello_unavailable`.
 
 I WAV generati da `/ask` vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il server è dietro un reverse proxy, imposta `WAV_PUBLIC_BASE_URL` con l'origine pubblica, senza slash finale.
 
-La sintesi usa Piper (`piper-tts`) con la voce italiana Paola medium. Il modello
+La sintesi usa Piper (`piper-tts`) con la voce italiana Serena high. Il modello
 viene caricato alla prima sintesi e riutilizzato nelle richieste successive.
 Puoi regolare `PIPER_LENGTH_SCALE` nel file `.env`: `1.0` usa la velocita
 del modello, valori maggiori rallentano la voce e valori minori la accelerano.
@@ -109,10 +109,10 @@ python scripts/download_piper_voice.py
 ```
 
 Lo script scarica entrambi da una revisione fissa di
-[rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/375a0fe641dea077c2a47b4e9a056d6da521eed3/it/it_IT/paola/medium)
+[committa/it_IT-serena-high](https://huggingface.co/committa/it_IT-serena-high/tree/c704759b2286f5f8c56eb4476169c4e2cda10b02)
 in `data/voices`, esclusa da Git. Se i file sono gia presenti li riutilizza;
 `--force` li riscarica, `--output-dir` cambia directory. La configurazione
-deve chiamarsi `it_IT-paola-medium.onnx.json` accanto al modello ONNX.
+deve chiamarsi `it_IT-serena-high.onnx.json` accanto al modello ONNX.
 Docker scarica la voce durante la build e non richiede download all'avvio.
 Le risposte rimangono WAV PCM mono a 16 bit, 22050 Hz, compatibili con Buddy.
 I saluti preregistrati di `/hello` e `/wakeup` si aggiungono come prima.
@@ -231,7 +231,7 @@ Le variabili principali sono documentate in `.env.example`.
 - `OPENAI_INSTRUCTIONS`: istruzioni generali date al modello.
 - `OPENAI_MAX_OUTPUT_TOKENS`, `OPENAI_TIMEOUT_SECONDS`: limiti della chiamata upstream.
 - `MAX_REQUEST_BYTES`, `MAX_AUDIO_BYTES`, `MAX_IMAGE_BYTES`, `MAX_TEXT_LENGTH`: limiti degli input.
-- `PIPER_MODEL_PATH`: percorso del modello ONNX; predefinito `data/voices/it_IT-paola-medium.onnx` nella directory del progetto.
+- `PIPER_MODEL_PATH`: percorso del modello ONNX; predefinito `data/voices/it_IT-serena-high.onnx` nella directory del progetto.
 - `PIPER_LENGTH_SCALE`: fattore di durata della voce, positivo e finito; predefinito `1.25`.
 
 La chiave OpenAI non viene mai inviata al client e le richieste upstream usano
