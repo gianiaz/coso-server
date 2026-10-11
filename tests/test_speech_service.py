@@ -288,6 +288,7 @@ def test_preload_at_app_start_reuses_model_for_first_question(tmp_path, caplog):
     model_path = tmp_path / "it_IT-serena-medium.onnx"
     with patch("app.services.speech_service.PiperVoice.load", return_value=voice) as load:
         app = create_app({"COSO_API_KEY": "test", "OPENAI_API_KEY": "",
+                          "WHISTLE_PRELOAD": False,
                           "WAV_OUTPUT_DIR": str(tmp_path), "PIPER_MODEL_PATH": str(model_path),
                           "MEMORY_DB_PATH": str(tmp_path / "memory.db")})
         load.assert_called_once_with(str(model_path))

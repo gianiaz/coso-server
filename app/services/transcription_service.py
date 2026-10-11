@@ -1,10 +1,11 @@
 import array
 import os
-import sys
 import wave
 from importlib import import_module
 from io import BytesIO
 from threading import Lock
+
+import numpy as np
 
 from langchain_community.document_loaders.blob_loaders import Blob
 from langchain_community.document_loaders.parsers.audio import OpenAIWhisperParser
@@ -24,33 +25,49 @@ class WhistleTranscriptionService:
     def __init__(self) -> None:
         self._model = None
 
+    def _load_model(self) -> None:
+        # Caller holds the process lock, including during startup preload.
+        if self._model is not None:
+            return
+        with timed_phase("whistle_model_load"):
+            os.environ["NEEDLE_TELEMETRY"] = "0"
+            os.environ["DO_NOT_TRACK"] = "1"
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+            from huggingface_hub import constants as hub_constants
+            hub_constants.HF_HUB_OFFLINE = True
+            hub_constants.HF_HUB_DISABLE_TELEMETRY = True
+            self._model = import_module("needle").Whistle()
+
+    def preload(self) -> None:
+        """Load local assets once before serving requests; never download."""
+        with timed_phase("whistle_preload"):
+            with _whistle_lock:
+                try:
+                    self._load_model()
+                except Exception as exc:
+                    raise TranscriptionServiceError(
+                        "Preload Whistle fallito (solo locale); verifica pesi e runtime "
+                        "preparati con scripts/download_whistle.py"
+                    ) from exc
+
     def transcribe(self, wav_data: bytes) -> str:
         try:
             with timed_phase("transcription_pcm_conversion"):
                 with wave.open(BytesIO(wav_data), "rb") as wav:
                     if (wav.getnchannels(), wav.getsampwidth(), wav.getframerate()) != (1, 2, 16000):
                         raise ValueError("Whistle richiede WAV PCM mono 16 bit, 16000 Hz")
-                    pcm = array.array("h")
-                    pcm.frombytes(wav.readframes(wav.getnframes()))
-                if sys.byteorder == "big":
-                    pcm.byteswap()
+                    raw = wav.readframes(wav.getnframes())
                 # Whistle interprets bytes as float32 samples, not as a WAV file.
-                samples = array.array("f", (sample / 32768.0 for sample in pcm))
+                # Vectorized native conversion avoids a Python loop per sample.
+                pcm = np.frombuffer(raw, dtype="<i2").astype(np.float32)
+                pcm *= np.float32(1.0 / 32768.0)
+                samples = array.array("f")
+                samples.frombytes(pcm.tobytes())
             with timed_phase("whistle_lock_wait"):
                 _whistle_lock.acquire()
             try:
-                if self._model is None:
-                    with timed_phase("whistle_model_load"):
-                        # Local inference must never download assets or register Hub usage.
-                        os.environ["NEEDLE_TELEMETRY"] = "0"
-                        os.environ["DO_NOT_TRACK"] = "1"
-                        os.environ["HF_HUB_OFFLINE"] = "1"
-                        os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-                        # Hub may already have been imported by another dependency.
-                        from huggingface_hub import constants as hub_constants
-                        hub_constants.HF_HUB_OFFLINE = True
-                        hub_constants.HF_HUB_DISABLE_TELEMETRY = True
-                        self._model = import_module("needle").Whistle()
+                self._load_model()
                 with timed_phase("whistle_inference"):
                     result = self._model.transcribe(samples, language="it")
             finally:

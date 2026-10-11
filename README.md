@@ -298,7 +298,12 @@ audio OpenAI richiede `ffmpeg`, già incluso nell'immagine Docker.
 
 Questa variante mantiene lo stesso contratto `/ask` e la stessa autenticazione.
 Whistle riceve campioni float32 ottenuti dal WAV PCM16 di Buddy; l'audio resta
-in memoria. Il modello viene inizializzato alla prima trascrizione e riutilizzato.
+in memoria. Il modello viene precaricato all'avvio e riutilizzato già dalla prima
+trascrizione. Il preload usa esclusivamente pesi e runtime locali: se mancano,
+l'avvio fallisce con un errore che indica `scripts/download_whistle.py`.
+Non effettua una trascrizione di prova e non scarica file dalla rete.
+La conversione PCM16 little-endian in campioni float32 usa NumPy per evitare
+un ciclo Python per ogni campione, mantenendo la stessa scala e gli stessi valori.
 Un lock per processo serializza le chiamate al runtime nativo, non thread-safe.
 Gli errori e le trascrizioni vuote mantengono la risposta `502 transcription_error`;
 non viene effettuato un fallback automatico verso OpenAI.
@@ -412,7 +417,7 @@ prima di iniziare e `phase_end` con `duration_ms` ed esito `ok` o `error`.
 | `transcription` | Trascrizione complessiva |
 | `transcription_pcm_conversion` | Conversione PCM16 in float32 per Whistle |
 | `whistle_lock_wait` | Attesa di altre trascrizioni nello stesso processo |
-| `whistle_model_load` | Primo caricamento locale di Whistle |
+| `whistle_preload`, `whistle_model_load` | Precaricamento locale di Whistle all'avvio |
 | `whistle_inference` | Trascrizione eseguita dal modello locale |
 | `memory`, `memory_classification`, `memory_response_processing`, `memory_sqlite`, `memory_search`, `memory_save` | Router della memoria, normalizzazione, ricerca e salvataggio |
 | `answer_generation` | Generazione complessiva della risposta AI |

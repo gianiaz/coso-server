@@ -61,6 +61,7 @@ def app(tmp_path):
         {
             "TESTING": True,
             "PIPER_PRELOAD": False,
+            "WHISTLE_PRELOAD": False,
             "COSO_API_KEY": "secret",
             "MAX_IMAGE_BYTES": 1024,
             "MAX_CONTENT_LENGTH": 20_000,
@@ -86,7 +87,7 @@ def auth():
 
 def test_default_openai_instructions_describe_coso(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENAI_INSTRUCTIONS", raising=False)
-    application = create_app({"TESTING": True, "PIPER_PRELOAD": False,
+    application = create_app({"TESTING": True, "PIPER_PRELOAD": False, "WHISTLE_PRELOAD": False,
                               "COSO_API_KEY": "secret", "WAV_OUTPUT_DIR": str(tmp_path)})
 
     assert application.config["OPENAI_INSTRUCTIONS"] == DEFAULT_OPENAI_INSTRUCTIONS
@@ -123,7 +124,8 @@ def test_health(client):
 def test_relative_wav_directory_download(tmp_path, monkeypatch, folder):
     monkeypatch.chdir(tmp_path)
     application = create_app({
-        "TESTING": True, "PIPER_PRELOAD": False, "COSO_API_KEY": "secret", "WAV_OUTPUT_DIR": "data/wav",
+        "TESTING": True, "PIPER_PRELOAD": False, "WHISTLE_PRELOAD": False,
+        "COSO_API_KEY": "secret", "WAV_OUTPUT_DIR": "data/wav",
     })
     directory = tmp_path / "data" / "wav" / folder
     directory.mkdir(parents=True, exist_ok=True)

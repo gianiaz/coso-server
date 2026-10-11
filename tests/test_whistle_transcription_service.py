@@ -130,7 +130,8 @@ def test_process_lock_serializes_two_service_instances():
 @pytest.mark.parametrize("backend,cls", [("whistle", WhistleTranscriptionService),
                                          ("openai", TranscriptionService)])
 def test_app_selects_backend(tmp_path, backend, cls):
-    app = create_app({"COSO_API_KEY": "test", "PIPER_PRELOAD": False, "WAV_OUTPUT_DIR": str(tmp_path),
+    app = create_app({"COSO_API_KEY": "test", "PIPER_PRELOAD": False, "WHISTLE_PRELOAD": False,
+                      "WAV_OUTPUT_DIR": str(tmp_path),
                       "TRANSCRIPTION_BACKEND": backend, "OPENAI_API_KEY": ""})
     assert isinstance(app.extensions["transcription_service"], cls)
 
@@ -166,13 +167,62 @@ def test_real_needle_initialization_never_opens_network(tmp_path, monkeypatch, c
     with patch.object(socket.socket, "connect", side_effect=AssertionError("network forbidden")) as connect:
         service = WhistleTranscriptionService()
         if cached:
+            service.preload()
             assert service.transcribe(wav_bytes()) == "Ciao"
             assert service.transcribe(wav_bytes()) == "Ciao"
             native.needle_load.assert_called_once()
         else:
             with pytest.raises(TranscriptionServiceError, match="solo locale"):
-                service.transcribe(wav_bytes())
+                service.preload()
             native.needle_load.assert_not_called()
         connect.assert_not_called()
     assert hub_constants.HF_HUB_OFFLINE is True
     assert hub_constants.HF_HUB_DISABLE_TELEMETRY is True
+
+
+def test_startup_preloads_whistle_once_and_reuses_it(tmp_path, caplog):
+    caplog.set_level("INFO")
+    model = Mock()
+    model.transcribe.return_value = {"text": "Ciao"}
+    with patch("app.services.transcription_service.import_module") as load:
+        load.return_value.Whistle.return_value = model
+        app = create_app({"COSO_API_KEY": "test", "PIPER_PRELOAD": False,
+                          "TRANSCRIPTION_BACKEND": "whistle", "OPENAI_API_KEY": "",
+                          "WAV_OUTPUT_DIR": str(tmp_path),
+                          "MEMORY_DB_PATH": str(tmp_path / "memory.db")})
+        service = app.extensions["transcription_service"]
+        service.preload()
+        model.transcribe.assert_not_called()
+        assert service.transcribe(wav_bytes()) == "Ciao"
+        load.return_value.Whistle.assert_called_once_with()
+    assert "phase=whistle_preload outcome=ok" in caplog.text
+
+
+def test_preload_failure_prevents_startup(tmp_path):
+    with patch("app.services.transcription_service.import_module") as load:
+        load.return_value.Whistle.side_effect = FileNotFoundError("missing local weights")
+        with pytest.raises(TranscriptionServiceError, match="Preload Whistle fallito"):
+            create_app({"COSO_API_KEY": "test", "PIPER_PRELOAD": False,
+                        "TRANSCRIPTION_BACKEND": "whistle", "OPENAI_API_KEY": "",
+                        "WAV_OUTPUT_DIR": str(tmp_path),
+                        "MEMORY_DB_PATH": str(tmp_path / "memory.db")})
+
+
+def test_openai_backend_does_not_preload_whistle(tmp_path):
+    with patch.object(WhistleTranscriptionService, "preload") as preload:
+        create_app({"COSO_API_KEY": "test", "PIPER_PRELOAD": False,
+                    "TRANSCRIPTION_BACKEND": "openai", "OPENAI_API_KEY": "",
+                    "WAV_OUTPUT_DIR": str(tmp_path),
+                    "MEMORY_DB_PATH": str(tmp_path / "memory.db")})
+        preload.assert_not_called()
+
+
+def test_vectorized_conversion_preserves_every_pcm16_value():
+    model = Mock()
+    model.transcribe.return_value = {"text": "Ciao"}
+    service = WhistleTranscriptionService()
+    service._model = model
+    values = range(-32768, 32768)
+    service.transcribe(wav_bytes(values))
+    samples = model.transcribe.call_args.args[0]
+    assert list(samples) == [value / 32768.0 for value in values]

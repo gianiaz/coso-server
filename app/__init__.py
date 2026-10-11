@@ -39,6 +39,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         OPENAI_BASE_URL=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         OPENAI_MODEL=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
         TRANSCRIPTION_BACKEND=os.getenv("TRANSCRIPTION_BACKEND", "whistle"),
+        WHISTLE_PRELOAD=True,
         MEMORY_ROUTER_MODEL=os.getenv("MEMORY_ROUTER_MODEL", "gpt-4o-mini"),
         MEMORY_ACTIVATION_KEYWORDS=os.getenv("MEMORY_ACTIVATION_KEYWORDS", DEFAULT_MEMORY_KEYWORDS),
         MEMORY_DB_PATH=os.getenv(
@@ -128,6 +129,8 @@ def create_app(test_config: dict | None = None) -> Flask:
     )
     if app.config["PIPER_PRELOAD"]:
         app.extensions["speech_service"].preload()
+    if app.config["TRANSCRIPTION_BACKEND"] == "whistle" and app.config["WHISTLE_PRELOAD"]:
+        app.extensions["transcription_service"].preload()
     install_request_timing(app)
     app.before_request(authenticate_request)
     app.register_blueprint(api)
