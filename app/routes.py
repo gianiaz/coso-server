@@ -12,7 +12,7 @@ from flask import Blueprint, current_app, jsonify, request, send_from_directory,
 from app.services.openai_service import ImageInput, OpenAIServiceError
 from app.services.speech_service import SpeechGenerationError
 from app.services.transcription_service import TranscriptionServiceError
-from app.timing import timed_phase
+from app.timing import timed_phase, transcription_stats
 
 api = Blueprint("api", __name__)
 
@@ -228,9 +228,13 @@ def ask_question():
         return jsonify(error="validation_error", message=str(exc)), 400
 
     transcription_service = current_app.extensions["transcription_service"]
+    backend = current_app.config.get("TRANSCRIPTION_BACKEND", "openai")
+    model = "whistle" if backend == "whistle" else current_app.config["OPENAI_TRANSCRIPTION_MODEL"]
     try:
-        with timed_phase("transcription"):
-            question = transcription_service.transcribe(audio)
+        with transcription_stats(audio, backend=backend, model=model) as stats:
+            with timed_phase("transcription"):
+                question = transcription_service.transcribe(audio)
+            stats["transcript"] = question
     except TranscriptionServiceError:
         current_app.logger.exception("Errore durante la trascrizione audio")
         return jsonify(

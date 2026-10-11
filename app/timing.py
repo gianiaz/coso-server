@@ -1,9 +1,12 @@
 """Request and phase timings without logging audio, prompts or credentials."""
 
 import logging
+import json
 import re
+import wave
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from io import BytesIO
 from time import perf_counter
 from uuid import uuid4
 
@@ -57,3 +60,37 @@ def timed_phase(phase: str):
     finally:
         _log("phase_end", phase=phase, outcome=outcome,
              duration_ms=f"{(perf_counter() - started) * 1000:.1f}")
+
+
+@contextmanager
+def transcription_stats(wav_data: bytes, *, backend: str, model: str):
+    """Log a comparable record for an already validated WAV, even on failure."""
+    with wave.open(BytesIO(wav_data), "rb") as wav:
+        audio_seconds = wav.getnframes() / wav.getframerate()
+        stats = {
+            "backend": backend,
+            "model": model,
+            "wav_bytes": len(wav_data),
+            "audio_seconds": round(audio_seconds, 3),
+            "sample_rate_hz": wav.getframerate(),
+            "channels": wav.getnchannels(),
+            "sample_width_bits": wav.getsampwidth() * 8,
+            "transcript": None,
+            "outcome": "ok",
+        }
+    started = perf_counter()
+    try:
+        yield stats
+    except BaseException as exc:
+        stats["outcome"] = "error"
+        stats["error_type"] = type(exc).__name__
+        raise
+    finally:
+        seconds = perf_counter() - started
+        stats["duration_ms"] = round(seconds * 1000, 1)
+        stats["rtf"] = round(seconds / audio_seconds, 4) if audio_seconds else None
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        current_app.logger.info(
+            "[Transcription] id=%s utc=%s %s", getattr(g, "timing_id", "-"),
+            timestamp, json.dumps(stats, ensure_ascii=False),
+        )

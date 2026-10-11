@@ -1,4 +1,5 @@
 import base64
+import json
 import wave
 from types import SimpleNamespace
 from io import BytesIO
@@ -286,6 +287,60 @@ def test_voice_timings_correlate_and_order_phases(client, caplog):
                for message in messages if "event=phase_end" in message)
     assert not any("Perch" in message or "Risposta di prova" in message
                    for message in messages)
+
+
+@pytest.mark.parametrize("backend", ["openai", "whistle"])
+@pytest.mark.parametrize("fail", [False, True])
+def test_transcription_statistics_for_both_backends(client, app, caplog, monkeypatch, backend, fail):
+    caplog.set_level("INFO")
+    app.config["TRANSCRIPTION_BACKEND"] = backend
+    app.config["OPENAI_TRANSCRIPTION_MODEL"] = "test-transcribe-model"
+    clock = [100.0]
+    monkeypatch.setattr("app.timing.perf_counter", lambda: clock[0])
+    transcript = 'Ciao "Coso"\nè una prova'
+
+    def transcribe(_audio):
+        clock[0] += 0.05
+        if fail:
+            raise TranscriptionServiceError("test failure")
+        return transcript
+
+    app.extensions["transcription_service"] = SimpleNamespace(transcribe=transcribe)
+    audio = make_wav()
+    response = client.post("/ask", data=audio, content_type="audio/wav",
+                           headers={"X-Request-ID": "compare-123"})
+
+    assert response.status_code == (502 if fail else 200)
+    messages = [record.getMessage() for record in caplog.records
+                if record.getMessage().startswith("[Transcription]")]
+    assert len(messages) == 1
+    assert "id=compare-123 utc=" in messages[0]
+    assert "\n" not in messages[0]
+    stats = json.loads(messages[0].split(" ", 3)[3])
+    assert stats["backend"] == backend
+    assert stats["model"] == ("whistle" if backend == "whistle" else "test-transcribe-model")
+    assert stats["wav_bytes"] == len(audio)
+    assert stats["audio_seconds"] == 0.2
+    assert stats["sample_rate_hz"] == 16000
+    assert stats["channels"] == 1
+    assert stats["sample_width_bits"] == 16
+    assert stats["duration_ms"] == 50.0
+    assert stats["rtf"] == 0.25
+    assert stats["outcome"] == ("error" if fail else "ok")
+    assert stats["transcript"] == (None if fail else transcript)
+    assert stats.get("error_type") == ("TranscriptionServiceError" if fail else None)
+    assert "secret" not in messages[0]
+    assert "X-API-Key" not in messages[0]
+
+
+@pytest.mark.parametrize("data,key,status", [(b"invalid", "secret", 400),
+                                            (make_wav(), "wrong", 401)])
+def test_invalid_or_unauthorized_audio_has_no_transcription_statistics(client, caplog, data, key, status):
+    caplog.set_level("INFO")
+    response = client.post("/ask", data=data, content_type="audio/wav",
+                           headers={"X-API-Key": key})
+    assert response.status_code == status
+    assert not any(record.getMessage().startswith("[Transcription]") for record in caplog.records)
 
 
 def test_voice_timings_record_failed_phase_and_http_error(client, app, caplog):

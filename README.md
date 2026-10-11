@@ -350,3 +350,30 @@ il completamento del trasferimento sulla rete: per i WAV confrontare anche
 i log di download e riproduzione sul client. Nessun testo della domanda,
 audio o credenziale viene aggiunto ai log temporali. Impostare `LOG_LEVEL=INFO`
 per visualizzarli. Il comportamento e i formati delle API restano invariati.
+
+Ogni trascrizione di `/ask` aggiunge un record INFO `[Transcription]`, con lo
+stesso ID richiesta e timestamp UTC, seguito da un oggetto JSON. Il formato è
+uguale per `TRANSCRIPTION_BACKEND=openai` e `TRANSCRIPTION_BACKEND=whistle`:
+
+- `backend` e `model`: servizio e modello utilizzati.
+- `wav_bytes`: dimensione effettiva del body WAV, header incluso.
+- `audio_seconds`, `sample_rate_hz`, `channels`, `sample_width_bits`: durata e formato.
+- `transcript`: testo completo trascritto, oppure `null` in caso di errore.
+- `duration_ms`: tempo della trascrizione, inclusi inizializzazione del modello,
+  eventuali download, attesa del lock locale o richiesta al servizio remoto.
+- `rtf`: tempo di trascrizione diviso durata dell'audio; valori sotto `1`
+  indicano elaborazione più veloce della durata della registrazione.
+- `outcome`: `ok` oppure `error`; in caso di errore compare anche `error_type`.
+
+Esempio di formato (tempi illustrativi):
+
+```text
+[Transcription] id=buddy-test-123 utc=2026-10-11T12:00:00.000+00:00 {"backend": "whistle", "model": "whistle", "wav_bytes": 6444, "audio_seconds": 0.2, "sample_rate_hz": 16000, "channels": 1, "sample_width_bits": 16, "transcript": "Ciao Coso", "outcome": "ok", "duration_ms": 50.0, "rtf": 0.25}
+```
+
+Il testo trascritto è registrato solo nei record `[Transcription]`; caratteri
+di controllo e ritorni a capo sono escapati nel JSON, così ogni record resta
+su una sola riga. Nessun audio binario o chiave viene aggiunto al record.
+Per confrontare i backend usare lo stesso WAV, separando il primo caricamento
+Whistle dalle richieste successive. Restano disponibili i tempi `[Timing]`
+delle altre fasi e il tempo totale `response_ready`.
