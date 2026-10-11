@@ -253,6 +253,144 @@ sudo systemctl status coso-server
 
 Il servizio verrà avviato automaticamente a ogni accensione del Raspberry.
 
+### Creare il servizio video `coso-camera.service`
+
+Il relay video deve essere un servizio separato da `coso-server.service`, così
+le connessioni video non occupano i thread delle domande vocali. **`systemctl`
+crea le condizioni di avvio, avvia e gestisce il servizio; `journalctl` consulta
+i suoi log.** I comandi seguenti vanno eseguiti sul Raspberry, senza Docker.
+
+L'esempio usa l'utente e il gruppo `giovanni`, il repository in
+`/home/giovanni/coso-server` e Python in `.venv/bin/python`. Se l'installazione
+usa un altro utente o percorso, adeguare `User`, `Group`, `WorkingDirectory`,
+`EnvironmentFile` ed `ExecStart`. L'utente del servizio deve poter leggere
+`camera_relay.py` e il `.env`, e avviare quell'interprete Python. Il relay usa
+solo la libreria standard: non richiede l'installazione di altri pacchetti.
+
+Per attivare il buffer e la replica MJPEG, impostare nel `.env`:
+
+```dotenv
+CAMERA_STREAM_URL=http://192.168.1.137:81/stream
+CAMERA_RELAY_URL=http://127.0.0.1:8001
+CAMERA_FPS=5
+CAMERA_MAX_AGE_SECONDS=3
+CAMERA_MAX_FRAME_BYTES=524288
+CAMERA_MAX_VIEWERS=2
+CAMERA_SNAPSHOT_TIMEOUT_SECONDS=0.75
+```
+
+Nel `.env` deve essere già presente una `COSO_API_KEY` non vuota, identica a
+quella usata da Buddy e dal servizio vocale. Il servizio legge questo file
+tramite `EnvironmentFile`; non inserire la chiave direttamente nel `.service`.
+
+Dal repository, installare il file fornito e aprirlo per verificare i percorsi:
+
+```bash
+cd /home/giovanni/coso-server
+sudo cp deploy/coso-camera.service /etc/systemd/system/coso-camera.service
+sudo nano /etc/systemd/system/coso-camera.service
+```
+
+In alternativa, creare direttamente quel file con `sudo nano`. Il contenuto
+completo è:
+
+```ini
+[Unit]
+Description=Coso Camera MJPEG Relay
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=giovanni
+Group=giovanni
+WorkingDirectory=/home/giovanni/coso-server
+EnvironmentFile=/home/giovanni/coso-server/.env
+ExecStart=/home/giovanni/coso-server/.venv/bin/python camera_relay.py
+Restart=on-failure
+RestartSec=5
+# camera_relay.py imposta nice +10 prima di avviare i thread.
+CPUWeight=10
+MemoryMax=64M
+TasksMax=32
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`Restart=on-failure` riavvia il processo se termina con un errore; le
+disconnessioni della ESPCam sono invece gestite dal relay stesso, senza
+riavviare Coso. `CPUWeight=10` riduce la priorità relativa sotto contesa,
+`MemoryMax=64M` limita la memoria e `TasksMax=32` limita processi/thread.
+Il programma imposta anche `nice +10`. Questi limiti danno precedenza al
+servizio vocale; le prestazioni vanno comunque misurate sul Raspberry Pi 3.
+
+Verificare il file, ricaricare le unit e attivare il servizio anche al boot:
+
+```bash
+sudo systemd-analyze verify /etc/systemd/system/coso-camera.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now coso-camera.service
+sudo systemctl restart coso-server
+sudo systemctl status coso-camera.service --no-pager
+```
+
+Il riavvio di `coso-server` gli fa leggere `CAMERA_RELAY_URL` dal `.env`.
+Per avviare il relay senza abilitarlo al boot, usare invece
+`sudo systemctl start coso-camera.service`.
+
+### Log e gestione del servizio video con `journalctl`
+
+Systemd raccoglie l'output del processo nel journal. Per seguire i nuovi log:
+
+```bash
+sudo journalctl -u coso-camera.service -f -o cat
+```
+
+Per leggere le ultime 100 righe o i log dall'ultimo avvio del Raspberry:
+
+```bash
+sudo journalctl -u coso-camera.service -n 100 --no-pager
+sudo journalctl -u coso-camera.service -b --no-pager
+```
+
+Ctrl+C interrompe soltanto la visualizzazione dei log; il servizio continua
+a funzionare. Per gestirlo:
+
+```bash
+sudo systemctl restart coso-camera.service
+sudo systemctl stop coso-camera.service
+sudo systemctl start coso-camera.service
+sudo systemctl disable --now coso-camera.service
+```
+
+Dopo modifiche al `.service`, eseguire `sudo systemctl daemon-reload` e
+`sudo systemctl restart coso-camera.service`. Dopo modifiche al codice video
+o alle sue variabili nel `.env`, basta riavviare `coso-camera.service`;
+riavviare anche Coso se sono cambiati URL, timeout o limiti del suo client camera.
+
+Se lo stato è `failed`, controllare i log: chiave vuota, percorsi sbagliati,
+permessi e porta 8001 già occupata impediscono l'avvio. Se il servizio è
+`active` ma la camera è scollegata, nei log compaiono i tentativi di
+riconnessione. Per confrontare il lavoro video con le domande vocali:
+
+```bash
+sudo journalctl -u coso-camera.service -u coso-server.service -f -o short-iso
+```
+
+Il relay usa la stessa `COSO_API_KEY`, priorità CPU inferiore e un limite di
+memoria di 64 MiB; non carica i modelli di trascrizione o sintesi. La porta
+8001 fornisce `/health`, `/snapshot` e `/stream`, tutti autenticati con
+`X-API-Key`. Il campo `camera_ready` di `/health` indica se esiste un fotogramma
+recente; lo stato del servizio da solo non garantisce che la ESPCam sia collegata.
+
+Dal PC, `python scripts/view_camera.py --url http://192.168.1.104:8001`
+apre il viewer nel browser e chiede la chiave senza inserirla nell'URL.
+I dettagli del comportamento e delle frasi visive riconosciute sono nel
+[README](README.md#telecamera-di-buddy).
+
 ## 9. Log e gestione del servizio
 
 Segui i log in tempo reale:

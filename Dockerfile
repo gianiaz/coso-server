@@ -29,6 +29,7 @@ ENV NEEDLE_WHISTLE_WEIGHTS=/app/data/whistle/whistle.cact \
     NEEDLE_TELEMETRY=0 \
     DO_NOT_TRACK=1
 COPY wsgi.py .
+COPY camera_relay.py .
 
 USER coso
 EXPOSE 8000

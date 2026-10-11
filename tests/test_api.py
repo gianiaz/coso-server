@@ -221,6 +221,38 @@ def test_ask_generates_wav_from_openai_answer(client, app):
     assert app.extensions["speech_service"].calls == ["Risposta di prova"]
 
 
+def test_visual_voice_question_attaches_camera_jpeg(client, app):
+    from app.services.openai_service import ImageInput
+    image = ImageInput(data=b'\xff\xd8photo\xff\xd9', mime_type='image/jpeg')
+    app.extensions['transcription_service'] = SimpleNamespace(transcribe=lambda _: 'Cosa vedi?')
+    app.extensions['camera_service'] = SimpleNamespace(snapshot=lambda: image)
+    response = client.post('/ask', data=make_wav(), content_type='audio/wav')
+    assert response.status_code == 200
+    assert response.json['type'] == 'command'
+    assert app.extensions['openai_service'].calls == [('Cosa vedi?', image)]
+    assert app.extensions['speech_service'].calls == ['Risposta di prova']
+
+
+def test_visual_question_camera_failure_is_spoken_without_ai(client, app):
+    from app.services.camera_service import CameraUnavailable
+    def unavailable():
+        raise CameraUnavailable('offline')
+    app.extensions['transcription_service'] = SimpleNamespace(transcribe=lambda _: 'Che oggetto è questo?')
+    app.extensions['camera_service'] = SimpleNamespace(snapshot=unavailable)
+    response = client.post('/ask', data=make_wav(), content_type='audio/wav')
+    assert response.status_code == 200
+    assert response.json['type'] == 'command'
+    assert app.extensions['openai_service'].calls == []
+    assert 'telecamera non è disponibile' in app.extensions['speech_service'].calls[0]
+
+
+def test_ordinary_voice_question_does_not_contact_camera(client, app):
+    def unexpected():
+        pytest.fail('La domanda ordinaria non deve contattare la camera')
+    app.extensions['camera_service'] = SimpleNamespace(snapshot=unexpected)
+    assert client.post('/ask', data=make_wav(), content_type='audio/wav').status_code == 200
+
+
 @pytest.mark.parametrize(
     ("payload", "content_type"),
     [

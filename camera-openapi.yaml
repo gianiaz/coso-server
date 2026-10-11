@@ -1,0 +1,93 @@
+openapi: 3.1.0
+info:
+  title: Coso Camera Relay
+  version: 1.0.0
+  description: >-
+    Servizio indipendente senza modelli AI. Mantiene cinque JPEG in RAM da una
+    sola connessione MJPEG alla ESPCam. Tutte le richieste richiedono X-API-Key,
+    uguale a COSO_API_KEY. La chiave non viene inviata alla ESPCam.
+servers:
+  - url: http://192.168.1.104:8001
+  - url: http://localhost:8001
+security:
+  - ApiKeyAuth: []
+paths:
+  /health:
+    get:
+      summary: Stato del relay e disponibilità di un fotogramma recente
+      description: HTTP 200 indica relay attivo anche quando la camera è offline.
+      responses:
+        "200":
+          description: Stato del relay.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, camera_ready, buffered_frames]
+                properties:
+                  status: {type: string, const: ok}
+                  camera_ready: {type: boolean}
+                  buffered_frames: {type: integer, minimum: 0, maximum: 5}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /snapshot:
+    get:
+      summary: Ultimo fotogramma JPEG recente
+      description: Nessuna attesa di un nuovo fotogramma. Cache-Control no-store.
+      responses:
+        "200":
+          description: JPEG compresso ricevuto dalla camera.
+          headers:
+            X-Frame-Age:
+              description: Secondi trascorsi dalla ricezione sul relay.
+              schema: {type: number, minimum: 0}
+            X-Frame-Sequence:
+              schema: {type: integer, minimum: 1}
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /stream:
+    get:
+      summary: Replica MJPEG per la rete locale
+      description: >-
+        Massimo due spettatori di default. I client lenti saltano fotogrammi;
+        nessuna coda per client. Il flusso si chiude quando la camera diventa
+        obsoleta o la scrittura al client supera il timeout. Non occupa thread
+        HTTP del servizio vocale sulla porta 8000.
+      responses:
+        "200":
+          description: Parti image/jpeg con Content-Length, boundary cosoframe.
+          content:
+            multipart/x-mixed-replace:
+              schema: {type: string, format: binary}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+components:
+  securitySchemes:
+    ApiKeyAuth: {type: apiKey, in: header, name: X-API-Key}
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: {type: string}
+        message: {type: string}
+  responses:
+    Unauthorized:
+      description: Chiave mancante o errata.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: camera_unavailable (nessun JPEG recente) o viewer_limit (limite spettatori).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

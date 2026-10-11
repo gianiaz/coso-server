@@ -226,6 +226,98 @@ Risposta:
 }
 ```
 
+## Telecamera di Buddy
+
+Il servizio `camera-relay` legge `http://192.168.1.137:81/stream` con una sola
+connessione, conserva gli ultimi **cinque JPEG compressi in RAM** e replica il
+video sulla porta **8001**. Non carica modelli AI, non decodifica/ricomprime
+immagini e non scrive fotogrammi su disco. Il firmware ESPCam attuale supporta
+un solo client dello stream: usare il relay anche per gli spettatori.
+
+`POST /ask` resta un body WAV. Dopo la trascrizione, frasi come «Cosa vedi?»,
+«Che oggetto è questo?», «Cosa sto inquadrando?» o «Descrivi quello che vedi»
+attivano l'invio di un solo JPEG al modello, insieme alla domanda. Il
+riconoscimento delle frasi è locale e non usa una seconda chiamata AI;
+domande generiche o formulazioni diverse potrebbero non attivare la camera.
+La risposta resta il comando WAV previsto da Buddy, senza modifiche al firmware.
+Il modello configurato deve supportare immagini; `gpt-4.1-mini` è il default
+del progetto. Le immagini vengono inviate a OpenAI solo per domande visive.
+L'API testuale `/api/v1/ask` continua a usare le immagini esplicitamente fornite.
+
+Il fotogramma viene scelto **dopo la trascrizione**, quindi mostra la scena
+presente in quel momento. Un JPEG più vecchio di 3 secondi, un servizio
+irraggiungibile o una camera non configurata producono una spiegazione vocale
+senza chiamare il modello AI. Il timeout del socket verso il relay è 0,75 s;
+non si aspetta una riconnessione della ESPCam nel flusso della domanda.
+
+### Avvio con Docker Compose
+
+```bash
+docker compose up -d --build coso-server camera-relay
+```
+
+Se il `.env` deriva da una versione precedente, i default Compose attivano già
+il relay. Se contiene `CAMERA_RELAY_URL`, usare `http://camera-relay:8001`.
+La stessa `COSO_API_KEY` protegge tutti gli endpoint di entrambi i servizi.
+Non viene mai inoltrata alla ESPCam. Il contratto del relay è in
+[`camera-openapi.yaml`](camera-openapi.yaml).
+
+Il processo video usa priorità CPU inferiore (`nice +10`); Compose aggiunge
+`cpu_shares: 128` e un limite di memoria di 64 MiB. Il server vocale mantiene
+i suoi due thread HTTP liberi dalle connessioni video persistenti. La camera
+si riconnette in background con intervalli da 1 a 15 secondi.
+
+### Avvio nativo
+
+Avviare `python3 camera_relay.py` come servizio separato, con `COSO_API_KEY`
+nell'ambiente. Nel servizio Coso impostare `CAMERA_RELAY_URL=http://127.0.0.1:8001`
+e riavviarlo. Se `CAMERA_RELAY_URL` è vuoto, Coso non contatta la camera.
+Il relay usa solo la libreria standard Python.
+
+Per crearlo come servizio permanente sul Raspberry, seguire la
+[procedura systemd completa](setup.md#creare-il-servizio-video-coso-cameraservice),
+che include il file `coso-camera.service`, avvio al boot, limiti delle risorse
+e gestione. I log si seguono con
+`sudo journalctl -u coso-camera.service -f -o cat`; per avviare il servizio
+si usa `sudo systemctl start coso-camera.service`.
+
+### Guardare il video dal PC
+
+Dal repository sul PC, con Python installato:
+
+```bash
+python scripts/view_camera.py --url http://192.168.1.104:8001
+```
+
+Lo script chiede la chiave senza mostrarla (oppure legge `COSO_API_KEY`
+dall'ambiente) e apre il browser. La chiave resta nel processo Python;
+non compare negli URL o nello storage del browser. Il piccolo proxy del viewer
+ascolta solo su loopback sul PC, non sul Raspberry, e mostra snapshot aggiornati
+circa cinque volte al secondo. Ctrl+C lo chiude. Non legge automaticamente `.env`.
+Un URL aperto direttamente nel browser non può aggiungere `X-API-Key`.
+
+I client capaci di inviare header possono usare `GET /stream` per MJPEG continuo,
+`GET /snapshot` per un JPEG e `GET /health` per `camera_ready` e `buffered_frames`,
+sempre con `X-API-Key`. `/health` resta 200 se il relay funziona ma la ESPCam è
+scollegata; controllare `camera_ready` per la disponibilità video.
+
+### Limiti per il Raspberry Pi 3
+
+I default sono 5 fps conservati/distribuiti, 512 KiB massimi per JPEG, 3 secondi
+di validità e due spettatori MJPEG persistenti. Quindi il buffer occupa al
+massimo 2,5 MiB di dati JPEG, oltre ai buffer temporanei e alla memoria Python.
+I browser del viewer usano richieste snapshot brevi invece di slot MJPEG;
+ogni spettatore aumenta comunque il traffico LAN. I socket del relay hanno
+timeout di 3 secondi e le richieste concorrenti sono limitate.
+
+`CAMERA_FPS` limita ciò che il relay conserva e distribuisce, **non** il traffico
+in ingresso: deve continuare a leggere lo stream per evitare ritardo. Per
+ridurre quel traffico bisogna limitare gli fps nel firmware ESPCam. Nessuna
+promessa di latenza sul Pi 3: confrontare gli stessi WAV con relay spento,
+relay attivo e viewer collegato, usando `[Timing]` (inclusa `camera_snapshot`),
+`[Transcription]` e `[Speech]`. Queste modifiche sono verificate localmente;
+prestazioni e qualità ottica richiedono una prova sulla scheda e sulla rete reali.
+
 ## Memoria a lungo termine
 
 Solo i messaggi che contengono una parola chiave della memoria passano attraverso

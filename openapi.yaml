@@ -200,6 +200,11 @@ paths:
         e di durata superiore a 0,1 secondi. Il limite predefinito del body è
         2 MiB. Il server trascrive l'audio, genera la risposta e ne sintetizza
         un nuovo WAV. Anche questa route richiede X-API-Key.
+        Per domande visive riconosciute localmente (per esempio "Cosa vedi?"
+        o "Che oggetto è questo?") allega un singolo JPEG recente dal servizio
+        camera-relay. Se la camera è disabilitata, scollegata o il fotogramma
+        è obsoleto, restituisce comunque il comando WAV con una spiegazione
+        vocale, senza chiamare il modello AI. Il body resta esclusivamente WAV.
       requestBody:
         required: true
         content:

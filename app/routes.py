@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from flask import Blueprint, current_app, jsonify, request, send_from_directory, url_for
 
 from app.services.openai_service import ImageInput, OpenAIServiceError
+from app.services.camera_service import CameraUnavailable, is_visual_question
 from app.services.speech_service import SpeechGenerationError
 from app.services.transcription_service import TranscriptionServiceError
 from app.timing import timed_phase, transcription_stats
@@ -241,8 +242,17 @@ def ask_question():
             error="transcription_error", message="Impossibile trascrivere l'audio."
         ), 502
 
+    image = None
+    if is_visual_question(question):
+        try:
+            with timed_phase("camera_snapshot"):
+                image = current_app.extensions["camera_service"].snapshot()
+        except CameraUnavailable:
+            current_app.logger.warning("Fotogramma camera non disponibile per la domanda visiva")
+            return _wav_command("Al momento non riesco a vedere: la telecamera non è disponibile.")
+
     try:
-        result = _ask_openai(text=question)
+        result = _ask_openai(text=question, image=image)
     except OpenAIServiceError:
         current_app.logger.exception("Errore durante la richiesta a OpenAI")
         return jsonify(error="upstream_error", message="Il servizio AI non è disponibile."), 502

@@ -1,0 +1,23 @@
+[Unit]
+Description=Coso Camera MJPEG Relay
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=giovanni
+Group=giovanni
+WorkingDirectory=/home/giovanni/coso-server
+EnvironmentFile=/home/giovanni/coso-server/.env
+ExecStart=/home/giovanni/coso-server/.venv/bin/python camera_relay.py
+Restart=on-failure
+RestartSec=5
+# camera_relay.py also sets nice +10 before starting its threads.
+CPUWeight=10
+MemoryMax=64M
+TasksMax=32
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -27,6 +27,10 @@ services:
       PIPER_MODEL_PATH: "${PIPER_MODEL_PATH:-/app/data/voices/it_IT-serena-high.onnx}"
       PIPER_LENGTH_SCALE: "${PIPER_LENGTH_SCALE:-1.25}"
       SOX_PATH: "${SOX_PATH:-sox}"
+      CAMERA_RELAY_URL: "${CAMERA_RELAY_URL:-http://camera-relay:8001}"
+      CAMERA_MAX_AGE_SECONDS: "${CAMERA_MAX_AGE_SECONDS:-3}"
+      CAMERA_MAX_FRAME_BYTES: "${CAMERA_MAX_FRAME_BYTES:-524288}"
+      CAMERA_SNAPSHOT_TIMEOUT_SECONDS: "${CAMERA_SNAPSHOT_TIMEOUT_SECONDS:-0.75}"
     volumes:
       - wav-data:/app/data/wav
       - memory-data:/app/data/memory
@@ -38,6 +42,29 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  camera-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile.camera
+    ports:
+      - "8001:8001"
+    environment:
+      COSO_API_KEY: "${COSO_API_KEY:?Imposta COSO_API_KEY nel file .env}"
+      CAMERA_STREAM_URL: "${CAMERA_STREAM_URL:-http://192.168.1.137:81/stream}"
+      CAMERA_FPS: "${CAMERA_FPS:-5}"
+      CAMERA_MAX_AGE_SECONDS: "${CAMERA_MAX_AGE_SECONDS:-3}"
+      CAMERA_MAX_FRAME_BYTES: "${CAMERA_MAX_FRAME_BYTES:-524288}"
+      CAMERA_MAX_VIEWERS: "${CAMERA_MAX_VIEWERS:-2}"
+    # Relative CPU priority under contention, rather than reserving a Pi core.
+    cpu_shares: 128
+    mem_limit: 64m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; req = urllib.request.Request('http://localhost:8001/health', headers={'X-API-Key': os.environ['COSO_API_KEY']}); urllib.request.urlopen(req, timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   wav-data:

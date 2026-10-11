@@ -6,6 +6,7 @@ from flask import Flask, jsonify
 
 from app.routes import api
 from app.auth import authenticate_request
+from app.services.camera_service import CameraService
 from app.services.openai_service import OpenAIService
 from app.services.memory_service import DEFAULT_MEMORY_KEYWORDS, MemoryService
 from app.services.speech_service import SpeechService
@@ -71,6 +72,10 @@ def create_app(test_config: dict | None = None) -> Flask:
         PIPER_LENGTH_SCALE=float(os.getenv("PIPER_LENGTH_SCALE", "1.25")),
         PIPER_PRELOAD=True,
         SOX_PATH=os.getenv("SOX_PATH", "sox"),
+        CAMERA_RELAY_URL=os.getenv("CAMERA_RELAY_URL", ""),
+        CAMERA_MAX_AGE_SECONDS=float(os.getenv("CAMERA_MAX_AGE_SECONDS", "3")),
+        CAMERA_MAX_FRAME_BYTES=_int_env("CAMERA_MAX_FRAME_BYTES", 512 * 1024),
+        CAMERA_SNAPSHOT_TIMEOUT_SECONDS=float(os.getenv("CAMERA_SNAPSHOT_TIMEOUT_SECONDS", "0.75")),
     )
 
     if test_config:
@@ -101,6 +106,12 @@ def create_app(test_config: dict | None = None) -> Flask:
         instructions=app.config["OPENAI_INSTRUCTIONS"],
         max_output_tokens=app.config["OPENAI_MAX_OUTPUT_TOKENS"],
         timeout=app.config["OPENAI_TIMEOUT_SECONDS"],
+    )
+    app.extensions["camera_service"] = CameraService(
+        url=app.config["CAMERA_RELAY_URL"], api_key=api_key,
+        max_age=app.config["CAMERA_MAX_AGE_SECONDS"],
+        max_bytes=min(app.config["CAMERA_MAX_FRAME_BYTES"], app.config["MAX_IMAGE_BYTES"]),
+        timeout=app.config["CAMERA_SNAPSHOT_TIMEOUT_SECONDS"],
     )
     app.extensions["memory_service"] = MemoryService(
         database_path=app.config["MEMORY_DB_PATH"],
