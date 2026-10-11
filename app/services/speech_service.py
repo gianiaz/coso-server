@@ -95,18 +95,22 @@ class SpeechService:
         filename = filename_for_text(text)
         destination = self.output_dir / filename
 
-        with self._generation_lock:
+        with timed_phase("speech_lock_wait"):
+            self._generation_lock.acquire()
+        try:
             temporary = self.output_dir / f".{uuid4().hex}.wav.tmp"
             processed = self.output_dir / f".{uuid4().hex}.processed.wav.tmp"
             try:
                 if self._voice is None:
                     with timed_phase("piper_model_load"):
                         self._voice = PiperVoice.load(str(self.model_path))
-                with wave.open(str(temporary), "wb") as wav_file:
-                    self._voice.synthesize_wav(
-                        "... " + text, wav_file, syn_config=self._synthesis_config
-                    )
-                sample_rate = validate_wav(temporary)
+                with timed_phase("piper_synthesis"):
+                    with wave.open(str(temporary), "wb") as wav_file:
+                        self._voice.synthesize_wav(
+                            "... " + text, wav_file, syn_config=self._synthesis_config
+                        )
+                with timed_phase("piper_wav_validation"):
+                    sample_rate = validate_wav(temporary)
                 with timed_phase("sox_processing"):
                     try:
                         subprocess.run(
@@ -120,9 +124,10 @@ class SpeechService:
                         raise SpeechGenerationError(
                             f"Elaborazione SoX fallita: {(exc.stderr or '')[-2000:]}"
                         ) from exc
-                if validate_wav(processed) != sample_rate:
-                    raise SpeechGenerationError("SoX ha modificato la frequenza del WAV")
-                processed.replace(destination)
+                with timed_phase("wav_publication"):
+                    if validate_wav(processed) != sample_rate:
+                        raise SpeechGenerationError("SoX ha modificato la frequenza del WAV")
+                    processed.replace(destination)
             except Exception as exc:
                 raise SpeechGenerationError(
                     "Generazione WAV Piper/SoX fallita; verifica modello ONNX, "
@@ -131,5 +136,7 @@ class SpeechService:
             finally:
                 temporary.unlink(missing_ok=True)
                 processed.unlink(missing_ok=True)
+        finally:
+            self._generation_lock.release()
 
         return filename

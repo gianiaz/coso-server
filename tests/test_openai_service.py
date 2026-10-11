@@ -20,7 +20,8 @@ def make_service(api_key="test-key", chat_model=None):
     return service, chat_openai
 
 
-def test_calls_responses_api_through_langchain_with_image():
+def test_calls_responses_api_through_langchain_with_image(caplog):
+    caplog.set_level("INFO")
     class FakeChatModel:
         def __init__(self):
             self.messages = None
@@ -59,6 +60,10 @@ def test_calls_responses_api_through_langchain_with_image():
     assert result.text == "Vedo un test."
     assert result.model == "test-model-2026"
     assert result.response_id == "resp_123"
+    timing = [record.getMessage() for record in caplog.records if "[Timing]" in record.getMessage()]
+    phases = [message.split("phase=")[1].split()[0] for message in timing
+              if "event=phase_end" in message]
+    assert phases == ["openai_request", "openai_response_processing"]
 
 
 def test_uses_default_prompt_for_image_without_text():
@@ -75,7 +80,8 @@ def test_uses_default_prompt_for_image_without_text():
     assert result.text == "Descrizione"
 
 
-def test_maps_langchain_errors():
+def test_maps_langchain_errors(caplog):
+    caplog.set_level("INFO")
     class FailingChatModel:
         def invoke(self, _messages):
             raise TimeoutError("timeout")
@@ -83,6 +89,9 @@ def test_maps_langchain_errors():
     service, _ = make_service(chat_model=FailingChatModel())
     with pytest.raises(OpenAIServiceError, match="Richiesta OpenAI fallita"):
         service.ask(text="Ciao")
+    timing = [record.getMessage() for record in caplog.records if "[Timing]" in record.getMessage()]
+    assert any("phase=openai_request outcome=error" in message for message in timing)
+    assert not any("phase=openai_response_processing" in message for message in timing)
 
 
 def test_requires_openai_key():

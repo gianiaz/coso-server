@@ -79,7 +79,8 @@ def write_audio(text, wav_file, *, syn_config):
     wav_file.writeframes(b"\x00\x00" * 2205)
 
 
-def test_generates_wav_with_piper_and_reuses_model(tmp_path, sox_run):
+def test_generates_wav_with_piper_and_reuses_model(tmp_path, sox_run, caplog):
+    caplog.set_level("INFO")
     service = SpeechService(
         output_dir=tmp_path, model_path=tmp_path / "paola.onnx", length_scale=1.2
     )
@@ -112,6 +113,13 @@ def test_generates_wav_with_piper_and_reuses_model(tmp_path, sox_run):
         assert audio.getnframes() == 2205
         assert audio.readframes(1) == b"\x01\x00"
     assert not list(tmp_path.glob("*.tmp"))
+    timing = [record.getMessage() for record in caplog.records if "[Timing]" in record.getMessage()]
+    ended = [message.split("phase=")[1].split()[0] for message in timing
+             if "event=phase_end" in message]
+    assert ended == ["speech_lock_wait", "piper_model_load", "piper_synthesis",
+                     "piper_wav_validation", "sox_processing", "wav_publication",
+                     "speech_lock_wait", "piper_synthesis", "piper_wav_validation",
+                     "sox_processing", "wav_publication"]
 
 
 @pytest.mark.parametrize("failure", ["missing", "exit", "timeout", "invalid", "rate"])

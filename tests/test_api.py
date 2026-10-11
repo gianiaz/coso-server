@@ -277,6 +277,7 @@ def test_voice_timings_correlate_and_order_phases(client, caplog):
                 if "[Timing]" in record.getMessage()]
     assert messages
     assert all("id=buddy-test-123 " in message for message in messages)
+    assert all("elapsed_ms=" in message for message in messages)
     assert "event=request_start" in messages[0]
     assert "event=response_ready status=200" in messages[-1]
     ended = [message.split("phase=")[1].split()[0] for message in messages

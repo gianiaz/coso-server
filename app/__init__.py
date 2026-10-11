@@ -82,10 +82,14 @@ def create_app(test_config: dict | None = None) -> Flask:
     # Resolve once so all producers and downloads use the same directory.
     app.config["WAV_OUTPUT_DIR"] = str(Path(app.config["WAV_OUTPUT_DIR"]).resolve())
 
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
-        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        level=log_level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    # basicConfig is a no-op when Gunicorn or another host already added handlers.
+    logging.getLogger().setLevel(log_level)
+    app.logger.setLevel(log_level)
 
     app.extensions["openai_service"] = OpenAIService(
         api_key=app.config["OPENAI_API_KEY"],

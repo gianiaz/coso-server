@@ -35,7 +35,8 @@ def wav_bytes(samples=(-32768, -16384, 0, 16384, 32767), rate=16000):
     return output.getvalue()
 
 
-def test_pcm_conversion_language_and_model_reuse():
+def test_pcm_conversion_language_and_model_reuse(caplog):
+    caplog.set_level("INFO")
     model = Mock()
     model.transcribe.return_value = {"text": " Ciao Coso! "}
     with patch("app.services.transcription_service.import_module") as load:
@@ -49,6 +50,12 @@ def test_pcm_conversion_language_and_model_reuse():
     assert samples.typecode == "f"
     assert list(samples) == pytest.approx([-1, -.5, 0, .5, 32767 / 32768])
     assert model.transcribe.call_args.kwargs == {"language": "it"}
+    timing = [record.getMessage() for record in caplog.records if "[Timing]" in record.getMessage()]
+    ended = [message.split("phase=")[1].split()[0] for message in timing
+             if "event=phase_end" in message]
+    assert ended == ["transcription_pcm_conversion", "whistle_lock_wait",
+                     "whistle_model_load", "whistle_inference",
+                     "transcription_pcm_conversion", "whistle_lock_wait", "whistle_inference"]
 
 
 @pytest.mark.parametrize("result", [{"text": " "}, {}, {"text": None}, {"text": 42}, None])

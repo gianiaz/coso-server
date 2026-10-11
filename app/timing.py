@@ -18,6 +18,8 @@ def _log(event: str, **fields) -> None:
     logger = current_app.logger if in_request else logging.getLogger(__name__)
     request_id = getattr(g, "timing_id", "-") if in_request else "-"
     timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    if in_request and hasattr(g, "timing_started") and "elapsed_ms" not in fields:
+        fields["elapsed_ms"] = f"{(perf_counter() - g.timing_started) * 1000:.1f}"
     details = " ".join(f"{key}={value}" for key, value in fields.items())
     logger.info("[Timing] id=%s utc=%s event=%s %s", request_id, timestamp, event, details)
 

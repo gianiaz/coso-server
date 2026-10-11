@@ -355,12 +355,34 @@ in millisecondi calcolate con un orologio monotono. L'header opzionale
 `X-Request-ID` permette di abbinare i log HTTP a quelli del firmware Buddy;
 senza header il server genera un ID. Le richieste simultanee hanno ID separati.
 
-Ogni richiesta registra `request_start` e `response_ready` con status e
-`elapsed_ms`. Le fasi registrano `phase_start` e `phase_end` con `duration_ms`
-ed esito: lettura body audio, validazione WAV, trascrizione, memoria,
-classificazione della memoria, accesso SQLite, risposta AI e sintesi vocale.
-La prima sintesi include anche la fase `piper_model_load`; nelle successive
-il modello rimane in memoria.
+Ogni richiesta registra `request_start` all'arrivo e `response_ready` con
+lo status finale. Tutti gli eventi includono ID richiesta, timestamp UTC e
+`elapsed_ms` dall'arrivo della richiesta. Ogni fase registra `phase_start`
+prima di iniziare e `phase_end` con `duration_ms` ed esito `ok` o `error`.
+
+| Fase | Cosa misura |
+| --- | --- |
+| `audio_body_read`, `audio_validation` | Ricezione del body e verifica del WAV |
+| `transcription` | Trascrizione complessiva |
+| `transcription_pcm_conversion` | Conversione PCM16 in float32 per Whistle |
+| `whistle_lock_wait` | Attesa di altre trascrizioni nello stesso processo |
+| `whistle_model_load` | Primo caricamento locale di Whistle |
+| `whistle_inference` | Trascrizione eseguita dal modello locale |
+| `memory`, `memory_classification`, `memory_sqlite` | Router della memoria e accesso al database |
+| `answer_generation` | Generazione complessiva della risposta AI |
+| `openai_request` | Invio dei messaggi a OpenAI e attesa della risposta |
+| `openai_response_processing` | Estrazione del testo e dei metadati dalla risposta |
+| `speech_generation` | Generazione complessiva del WAV |
+| `speech_lock_wait` | Attesa di altre sintesi nello stesso processo |
+| `piper_model_load` | Primo caricamento della voce Piper |
+| `piper_synthesis` | Sintesi vocale e scrittura del WAV grezzo |
+| `piper_wav_validation` | Verifica del WAV grezzo |
+| `sox_processing` | Elaborazione degli effetti e riduzione del volume |
+| `wav_publication` | Verifica e pubblicazione del WAV finale |
+
+I caricamenti dei modelli compaiono solo quando necessari; i modelli restano
+in memoria nelle richieste successive. `openai_request` include anche il
+trasporto e il decoding effettuato dal client, non misura solo il calcolo remoto.
 La durata `memory` comprende classificazione e SQLite; la validazione audio
 comprende la lettura del body. Le durate annidate non vanno sommate.
 
@@ -369,6 +391,22 @@ il completamento del trasferimento sulla rete: per i WAV confrontare anche
 i log di download e riproduzione sul client. Nessun testo della domanda,
 audio o credenziale viene aggiunto ai log temporali. Impostare `LOG_LEVEL=INFO`
 per visualizzarli. Il comportamento e i formati delle API restano invariati.
+
+Il livello INFO viene applicato esplicitamente anche se Gunicorn ha gia
+inizializzato il logging. Per seguire gli eventi in tempo reale:
+
+```bash
+journalctl -u coso-server -f -o cat
+# Oppure, con Docker:
+docker compose logs -f coso-server
+```
+
+Esempio di una fase (tempi illustrativi):
+
+```text
+[Timing] id=buddy-test-123 utc=2026-10-11T12:00:00.000+00:00 event=phase_start phase=openai_request elapsed_ms=420.0
+[Timing] id=buddy-test-123 utc=2026-10-11T12:00:01.200+00:00 event=phase_end phase=openai_request outcome=ok duration_ms=1200.0 elapsed_ms=1620.0
+```
 
 Ogni trascrizione di `/ask` aggiunge un record INFO `[Transcription]`, con lo
 stesso ID richiesta e timestamp UTC, seguito da un oggetto JSON. Il formato è
@@ -379,7 +417,8 @@ uguale per `TRANSCRIPTION_BACKEND=openai` e `TRANSCRIPTION_BACKEND=whistle`:
 - `audio_seconds`, `sample_rate_hz`, `channels`, `sample_width_bits`: durata e formato.
 - `transcript`: testo completo trascritto, oppure `null` in caso di errore.
 - `duration_ms`: tempo della trascrizione, inclusi inizializzazione del modello,
-  eventuali download, attesa del lock locale o richiesta al servizio remoto.
+  attesa del lock locale o richiesta al servizio remoto. Whistle non scarica
+  file durante la trascrizione.
 - `rtf`: tempo di trascrizione diviso durata dell'audio; valori sotto `1`
   indicano elaborazione più veloce della durata della registrazione.
 - `outcome`: `ok` oppure `error`; in caso di errore compare anche `error_type`.

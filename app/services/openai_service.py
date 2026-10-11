@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
+from app.timing import timed_phase
+
 
 @dataclass(frozen=True)
 class ImageInput:
@@ -97,15 +99,17 @@ class OpenAIService:
             if memory_context:
                 messages.append(SystemMessage(content=memory_context))
             messages.append(HumanMessage(content=content))
-            response = self._chat_model.invoke(messages)
+            with timed_phase("openai_request"):
+                response = self._chat_model.invoke(messages)
         except Exception as exc:
             raise OpenAIServiceError("Richiesta OpenAI fallita") from exc
 
-        output_text = self._extract_text(response)
-        if not output_text:
-            raise OpenAIServiceError("OpenAI ha restituito una risposta vuota")
-        return AskResult(
-            text=output_text,
-            model=response.response_metadata.get("model_name", self.model),
-            response_id=response.response_metadata.get("id", ""),
-        )
+        with timed_phase("openai_response_processing"):
+            output_text = self._extract_text(response)
+            if not output_text:
+                raise OpenAIServiceError("OpenAI ha restituito una risposta vuota")
+            return AskResult(
+                text=output_text,
+                model=response.response_metadata.get("model_name", self.model),
+                response_id=response.response_metadata.get("id", ""),
+            )
