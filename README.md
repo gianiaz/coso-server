@@ -259,7 +259,8 @@ docker compose up -d --build coso-server camera-relay
 Se il `.env` deriva da una versione precedente, i default Compose attivano già
 il relay. Se contiene `CAMERA_RELAY_URL`, usare `http://camera-relay:8001`.
 La stessa `COSO_API_KEY` protegge tutti gli endpoint di entrambi i servizi.
-Non viene mai inoltrata alla ESPCam. Il contratto del relay è in
+Gli endpoint video del relay accettano anche utente/password, se configurati
+come descritto sotto. Nessuna credenziale viene inoltrata alla ESPCam. Il contratto del relay è in
 [`camera-openapi.yaml`](camera-openapi.yaml).
 
 Il processo video usa priorità CPU inferiore (`nice +10`); Compose aggiunge
@@ -283,6 +284,11 @@ si usa `sudo systemctl start coso-camera.service`.
 
 ### Guardare il video dal PC
 
+Con `CAMERA_USERNAME` e `CAMERA_PASSWORD` configurati, aprire direttamente
+`http://192.168.1.104:8001/stream`: il browser chiede utente e password e mostra
+lo stream. `/snapshot` mostra invece l'ultimo JPEG. Per il solo accesso tramite
+chiave API resta disponibile il viewer seguente.
+
 Dal repository sul PC, con Python installato:
 
 ```bash
@@ -294,12 +300,54 @@ dall'ambiente) e apre il browser. La chiave resta nel processo Python;
 non compare negli URL o nello storage del browser. Il piccolo proxy del viewer
 ascolta solo su loopback sul PC, non sul Raspberry, e mostra snapshot aggiornati
 circa cinque volte al secondo. Ctrl+C lo chiude. Non legge automaticamente `.env`.
-Un URL aperto direttamente nel browser non può aggiungere `X-API-Key`.
+Un URL aperto direttamente nel browser non può aggiungere `X-API-Key`, ma
+può autenticarsi tramite HTTP Basic se è stato abilitato.
 
 I client capaci di inviare header possono usare `GET /stream` per MJPEG continuo,
 `GET /snapshot` per un JPEG e `GET /health` per `camera_ready` e `buffered_frames`,
-sempre con `X-API-Key`. `/health` resta 200 se il relay funziona ma la ESPCam è
+con `X-API-Key`. GET/HEAD `/stream` e `/snapshot` accettano anche HTTP Basic;
+`/health` richiede sempre la chiave API. `/health` resta 200 se il relay funziona ma la ESPCam è
 scollegata; controllare `camera_ready` per la disponibilità video.
+
+### Home Assistant
+
+Nel `.env` del Raspberry aggiungere credenziali dedicate al video:
+
+```dotenv
+CAMERA_USERNAME=buddy
+CAMERA_PASSWORD="scegli-una-password-per-il-video"
+```
+
+Sostituire la password di esempio. Entrambi i valori devono essere configurati:
+se sono vuoti, HTTP Basic è disabilitato; se ne manca uno, il relay rifiuta
+l'avvio. Il nome utente non può contenere `:`. Queste credenziali consentono
+solo GET/HEAD di `/stream` e `/snapshot`, non accesso agli endpoint vocali di
+Coso o al suo modello AI. Coso continua a usare `COSO_API_KEY` per gli snapshot.
+
+Senza Docker, riavviare `sudo systemctl restart coso-camera.service`.
+Con Compose, ricreare il relay per leggere il nuovo ambiente:
+
+```bash
+docker compose up -d --build camera-relay
+```
+
+In Home Assistant, aprire **Impostazioni → Dispositivi e servizi → Aggiungi
+integrazione → MJPEG IP Camera** e compilare:
+
+| Campo | Valore |
+| --- | --- |
+| MJPEG URL | `http://192.168.1.104:8001/stream` |
+| Still Image URL | `http://192.168.1.104:8001/snapshot` |
+| Username | Il valore di `CAMERA_USERNAME` |
+| Password | Il valore di `CAMERA_PASSWORD` |
+
+L'integrazione rileva l'autenticazione Basic automaticamente, come indicato
+nella [documentazione ufficiale Home Assistant](https://www.home-assistant.io/integrations/mjpeg/).
+Usare l'IP LAN del Raspberry, non `127.0.0.1` (che su Home Assistant indica
+Home Assistant stesso). Poi aggiungere l'entità camera creata alla dashboard.
+Home Assistant occupa uno slot MJPEG mentre guarda lo stream; il limite resta
+due connessioni persistenti. HTTP Basic su questo URL HTTP è pensato per la
+LAN fidata; per accesso esterno serve HTTPS. Non inserire credenziali nell'URL.
 
 ### Limiti per il Raspberry Pi 3
 

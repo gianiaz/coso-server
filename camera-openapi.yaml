@@ -4,8 +4,10 @@ info:
   version: 1.0.0
   description: >-
     Servizio indipendente senza modelli AI. Mantiene cinque JPEG in RAM da una
-    sola connessione MJPEG alla ESPCam. Tutte le richieste richiedono X-API-Key,
-    uguale a COSO_API_KEY. La chiave non viene inviata alla ESPCam.
+    sola connessione MJPEG alla ESPCam. X-API-Key deve coincidere con COSO_API_KEY.
+    GET/HEAD /snapshot e /stream accettano anche HTTP Basic se CAMERA_USERNAME
+    e CAMERA_PASSWORD sono configurati. /health richiede sempre X-API-Key.
+    Nessuna credenziale viene inviata alla ESPCam.
 servers:
   - url: http://192.168.1.104:8001
   - url: http://localhost:8001
@@ -32,6 +34,9 @@ paths:
           $ref: "#/components/responses/Unauthorized"
   /snapshot:
     get:
+      security:
+        - ApiKeyAuth: []
+        - CameraBasic: []
       summary: Ultimo fotogramma JPEG recente
       description: Nessuna attesa di un nuovo fotogramma. Cache-Control no-store.
       responses:
@@ -52,6 +57,9 @@ paths:
           $ref: "#/components/responses/Unavailable"
   /stream:
     get:
+      security:
+        - ApiKeyAuth: []
+        - CameraBasic: []
       summary: Replica MJPEG per la rete locale
       description: >-
         Massimo due spettatori di default. I client lenti saltano fotogrammi;
@@ -71,6 +79,7 @@ paths:
 components:
   securitySchemes:
     ApiKeyAuth: {type: apiKey, in: header, name: X-API-Key}
+    CameraBasic: {type: http, scheme: basic}
   schemas:
     Error:
       type: object
@@ -80,7 +89,9 @@ components:
         message: {type: string}
   responses:
     Unauthorized:
-      description: Chiave mancante o errata.
+      description: >-
+        Credenziali mancanti o errate. Per /snapshot e /stream il relay aggiunge
+        WWW-Authenticate Basic se l'accesso con utente/password è configurato.
       content:
         application/json:
           schema:

@@ -383,7 +383,23 @@ sudo journalctl -u coso-camera.service -u coso-server.service -f -o short-iso
 Il relay usa la stessa `COSO_API_KEY`, priorità CPU inferiore e un limite di
 memoria di 64 MiB; non carica i modelli di trascrizione o sintesi. La porta
 8001 fornisce `/health`, `/snapshot` e `/stream`, tutti autenticati con
-`X-API-Key`. Il campo `camera_ready` di `/health` indica se esiste un fotogramma
+`X-API-Key`. È possibile abilitare anche HTTP Basic per GET/HEAD `/stream` e
+`/snapshot` con queste variabili aggiuntive nel `.env`:
+
+```dotenv
+CAMERA_USERNAME=buddy
+CAMERA_PASSWORD="scegli-una-password-per-il-video"
+```
+
+Sostituire la password di esempio e riavviare
+`sudo systemctl restart coso-camera.service`. Le credenziali video non
+sostituiscono `COSO_API_KEY` nel servizio vocale. Home Assistant può quindi
+usare l'integrazione MJPEG IP Camera con URL stream
+`http://192.168.1.104:8001/stream`, immagine statica
+`http://192.168.1.104:8001/snapshot`, utente e password appena configurati.
+La [procedura Home Assistant](README.md#home-assistant) descrive i campi.
+
+Il campo `camera_ready` di `/health` indica se esiste un fotogramma
 recente; lo stato del servizio da solo non garantisce che la ESPCam sia collegata.
 
 Dal PC, `python scripts/view_camera.py --url http://192.168.1.104:8001`

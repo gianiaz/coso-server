@@ -1,5 +1,7 @@
 """Bounded MJPEG relay. Standard library only: no AI models or video decoding."""
 
+import base64
+import binascii
 import hmac
 import json
 import logging
@@ -139,9 +141,12 @@ class RelayServer(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 8
 
-    def __init__(self, address, buffer, api_key, max_viewers=2, fps=5.0):
+    def __init__(self, address, buffer, api_key, max_viewers=2, fps=5.0, *, username="", password=""):
+        if bool(username) != bool(password) or (username and (not username.strip() or ":" in username)) or (password and not password.strip()):
+            raise ValueError("Configura CAMERA_USERNAME e CAMERA_PASSWORD insieme; l'utente non può contenere ':'")
         self.buffer = buffer
         self.api_key = api_key
+        self.video_credentials = f"{username}:{password}".encode("utf-8") if username else None
         self.viewers = threading.BoundedSemaphore(max_viewers)
         self.requests = threading.BoundedSemaphore(max_viewers + 6)
         self.interval = 1 / fps
@@ -177,10 +182,27 @@ class RelayHandler(BaseHTTPRequestHandler):
         if not super().parse_request():
             return False
         # Authenticate even HEAD, OPTIONS and unsupported HTTP methods.
-        if not hmac.compare_digest(self.headers.get("X-API-Key", "").encode(), self.server.api_key.encode()):
-            self.error(401, "unauthorized", "API key mancante o non valida.")
+        api_authenticated = hmac.compare_digest(self.headers.get("X-API-Key", "").encode(), self.server.api_key.encode())
+        if not api_authenticated and not self.video_authenticated():
+            headers = {}
+            if self.path in {"/snapshot", "/stream"} and self.server.video_credentials:
+                headers["WWW-Authenticate"] = 'Basic realm="Buddy camera", charset="UTF-8"'
+            self.error(401, "unauthorized", "Credenziali mancanti o non valide.", **headers)
             return False
         return True
+
+    def video_authenticated(self):
+        # Home Assistant/browser credentials only grant read access to video.
+        if self.command not in {"GET", "HEAD"} or self.path not in {"/snapshot", "/stream"} or not self.server.video_credentials:
+            return False
+        scheme, _, token = self.headers.get("Authorization", "").partition(" ")
+        if scheme.lower() != "basic":
+            return False
+        try:
+            provided = base64.b64decode(token, validate=True)
+        except (ValueError, binascii.Error):
+            return False
+        return hmac.compare_digest(provided, self.server.video_credentials)
 
     def send_error(self, code, message=None, explain=None):
         self.error(code, "http_error", message or self.responses.get(code, ("Errore HTTP",))[0])
@@ -196,8 +218,8 @@ class RelayHandler(BaseHTTPRequestHandler):
         if getattr(self, "command", None) != "HEAD":
             self.wfile.write(data)
 
-    def error(self, status, code, message):
-        self.reply(status, json.dumps({"error": code, "message": message}).encode(), "application/json")
+    def error(self, status, code, message, **headers):
+        self.reply(status, json.dumps({"error": code, "message": message}).encode(), "application/json", **headers)
 
     def do_HEAD(self):
         self.do_GET()
@@ -263,7 +285,10 @@ def main():
     logging.basicConfig(level=logging.INFO)
     buffer = FrameBuffer(max_age=age, max_bytes=size)
     reader = CameraReader(url, buffer, fps=fps)
-    server = RelayServer(("0.0.0.0", int(os.getenv("CAMERA_PORT", "8001"))), buffer, key, viewers, fps)
+    server = RelayServer(
+        ("0.0.0.0", int(os.getenv("CAMERA_PORT", "8001"))), buffer, key, viewers, fps,
+        username=os.getenv("CAMERA_USERNAME", ""), password=os.getenv("CAMERA_PASSWORD", ""),
+    )
     thread = threading.Thread(target=reader.run, daemon=True)
     thread.start()
     try:

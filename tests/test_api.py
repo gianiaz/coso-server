@@ -409,6 +409,13 @@ def test_requires_api_key(app):
     assert response.status_code == 401
 
 
+def test_video_basic_credentials_do_not_authenticate_coso(app):
+    authorization = 'Basic ' + base64.b64encode(b'buddy:video-secret').decode()
+    response = app.test_client().post('/api/v1/ask', json={'text': 'Ciao'},
+                                      headers={'Authorization': authorization})
+    assert response.status_code == 401
+
+
 @pytest.mark.parametrize("key", [None, "", "wrong", "chiave-errata-è"])
 @pytest.mark.parametrize("method,path", [
     ("GET", "/health"), ("HEAD", "/health"), ("OPTIONS", "/health"),

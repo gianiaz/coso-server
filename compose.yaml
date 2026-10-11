@@ -56,6 +56,8 @@ services:
       CAMERA_MAX_AGE_SECONDS: "${CAMERA_MAX_AGE_SECONDS:-3}"
       CAMERA_MAX_FRAME_BYTES: "${CAMERA_MAX_FRAME_BYTES:-524288}"
       CAMERA_MAX_VIEWERS: "${CAMERA_MAX_VIEWERS:-2}"
+      CAMERA_USERNAME: "${CAMERA_USERNAME:-}"
+      CAMERA_PASSWORD: "${CAMERA_PASSWORD:-}"
     # Relative CPU priority under contention, rather than reserving a Pi core.
     cpu_shares: 128
     mem_limit: 64m

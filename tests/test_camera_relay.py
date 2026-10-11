@@ -1,4 +1,5 @@
 from email.message import Message
+import base64
 from io import BytesIO
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
@@ -55,7 +56,8 @@ def test_buffer_is_bounded_and_rejects_stale_frames(monkeypatch):
 @pytest.fixture
 def relay():
     buffer = FrameBuffer()
-    server = RelayServer(('127.0.0.1', 0), buffer, 'secret', max_viewers=1, fps=30)
+    server = RelayServer(('127.0.0.1', 0), buffer, 'secret', max_viewers=1, fps=30,
+                         username='buddy', password='video-secret')
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield server, f'http://127.0.0.1:{server.server_port}'
@@ -66,6 +68,70 @@ def relay():
 
 def get(url, key='secret'):
     return local_opener().open(Request(url, headers={'X-API-Key': key}), timeout=2)
+
+
+def basic(credentials='buddy:video-secret'):
+    return {'Authorization': 'Basic ' + base64.b64encode(credentials.encode()).decode()}
+
+
+@pytest.mark.parametrize('path', ['/snapshot', '/stream'])
+def test_basic_auth_allows_video_and_challenges_browser(relay, path):
+    server, url = relay
+    server.buffer.put(JPEG)
+    with pytest.raises(HTTPError) as exc:
+        local_opener().open(url + path, timeout=2)
+    assert exc.value.code == 401
+    assert exc.value.headers['WWW-Authenticate'].startswith('Basic ')
+    with local_opener().open(Request(url + path, headers=basic()), timeout=2) as response:
+        assert response.status == 200
+        if path == '/snapshot':
+            assert response.read() == JPEG
+        else:
+            assert response.readline().strip() == b'--cosoframe'
+    with server.buffer.condition:
+        server.buffer.frames.clear()
+
+
+@pytest.mark.parametrize('authorization', [
+    'Basic not-base64', 'Basic ' + base64.b64encode(b'buddy:wrong').decode(),
+    'Basic ' + base64.b64encode(b'wrong:video-secret').decode(),
+    'Bearer video-secret', 'Basic ',
+])
+def test_invalid_basic_auth_is_rejected(relay, authorization):
+    _, url = relay
+    with pytest.raises(HTTPError) as exc:
+        local_opener().open(Request(url + '/snapshot', headers={'Authorization': authorization}), timeout=2)
+    assert exc.value.code == 401
+
+
+@pytest.mark.parametrize('path,method', [('/health', 'GET'), ('/unknown', 'GET'),
+                                       ('/snapshot', 'POST'), ('/stream', 'OPTIONS')])
+def test_video_credentials_cannot_access_other_routes_or_methods(relay, path, method):
+    _, url = relay
+    with pytest.raises(HTTPError) as exc:
+        local_opener().open(Request(url + path, headers=basic(), method=method), timeout=2)
+    assert exc.value.code == 401
+
+
+def test_basic_auth_is_optional_and_head_works(relay):
+    server, url = relay
+    server.buffer.put(JPEG)
+    with local_opener().open(Request(url + '/snapshot', headers=basic(), method='HEAD'), timeout=2) as response:
+        assert response.status == 200
+        assert response.read() == b''
+    server.video_credentials = None
+    with pytest.raises(HTTPError) as exc:
+        local_opener().open(Request(url + '/snapshot', headers=basic()), timeout=2)
+    assert exc.value.code == 401
+    assert 'WWW-Authenticate' not in exc.value.headers
+    assert CameraService(url=url, api_key='secret').snapshot().data == JPEG
+
+
+@pytest.mark.parametrize('username,password', [('buddy', ''), ('', 'secret'),
+                                             ('bad:user', 'secret'), (' ', 'secret'), ('buddy', ' ')])
+def test_incomplete_basic_configuration_fails(username, password):
+    with pytest.raises(ValueError):
+        RelayServer(('127.0.0.1', 0), FrameBuffer(), 'secret', username=username, password=password)
 
 
 @pytest.mark.parametrize('path', ['/health', '/snapshot', '/stream', '/unknown'])
