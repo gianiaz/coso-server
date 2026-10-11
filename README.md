@@ -228,11 +228,26 @@ Risposta:
 
 ## Memoria a lungo termine
 
-Ogni messaggio testuale passa prima attraverso un router leggero con output
+I messaggi testuali passano prima attraverso un router leggero con output
 strutturato. Il router distingue i fatti durevoli (per esempio componenti di un
 progetto, configurazioni domotiche o informazioni familiari) dalle interazioni
 transitorie. Solo i fatti durevoli vengono sintetizzati e salvati in SQLite con
 categoria, tag e timestamp.
+
+Una lista limitata di frasi esatte (saluti, ringraziamenti, domande sul nome e
+sull'ora) evita la chiamata al router. Maiuscole, spazi e punteggiatura vengono
+normalizzati. Una frase aggiuntiva, un fatto personale o un riferimento a un
+progetto mantengono il percorso completo; non si usa un confronto per prefisso.
+
+Il riepilogo INFO `[Memory]`, correlato all'ID richiesta, riporta modello,
+eventuale motivo del bypass, numero di caratteri, durata della classificazione,
+durata del modello misurata tramite callback, token quando disponibili, decisioni
+`should_save`/`needs_context`, numero di ricordi e risultato del salvataggio.
+Il tempo del modello include SDK, rete e servizio remoto: non misura separatamente
+la sola inferenza sul server OpenAI. La classificazione include anche la pipeline
+di output strutturato; `memory_response_processing` misura la validazione finale
+e la normalizzazione locale. Non vengono registrati testo, riassunti o tag.
+`memory_search` e `memory_save` compaiono solo se le operazioni vengono eseguite.
 
 Quando una domanda richiede informazioni precedenti, il router recupera fino a
 `MEMORY_RESULT_LIMIT` fatti per categoria, tag o parola chiave. Questi vengono
@@ -390,7 +405,7 @@ prima di iniziare e `phase_end` con `duration_ms` ed esito `ok` o `error`.
 | `whistle_lock_wait` | Attesa di altre trascrizioni nello stesso processo |
 | `whistle_model_load` | Primo caricamento locale di Whistle |
 | `whistle_inference` | Trascrizione eseguita dal modello locale |
-| `memory`, `memory_classification`, `memory_sqlite` | Router della memoria e accesso al database |
+| `memory`, `memory_classification`, `memory_response_processing`, `memory_sqlite`, `memory_search`, `memory_save` | Router della memoria, normalizzazione, ricerca e salvataggio |
 | `answer_generation` | Generazione complessiva della risposta AI |
 | `openai_request` | Invio dei messaggi a OpenAI e attesa della risposta |
 | `openai_response_processing` | Estrazione del testo e dei metadati dalla risposta |

@@ -1,5 +1,11 @@
+import json
+import logging
+
+import pytest
+
 from app.services.memory_service import (
     IntentAnalysis,
+    MemoryModelTiming,
     MemoryService,
     SQLiteMemoryStore,
 )
@@ -10,7 +16,7 @@ class FakeRouter:
         self.result = result
         self.calls = []
 
-    def invoke(self, messages):
+    def invoke(self, messages, config=None):
         self.calls.append(messages)
         return self.result
 
@@ -106,7 +112,54 @@ def test_router_failure_does_not_break_the_main_request(tmp_path):
     service = make_service(tmp_path, {})
     service._router = FakeRouter(None)
 
-    result = service.process("Ciao")
+    result = service.process("Quale scheda uso?")
 
     assert not result.saved
     assert result.contexts == ()
+
+
+@pytest.mark.parametrize("text", ["Ciao!", " COME TI CHIAMI? ",
+                                 "Dimmi come ti chiami che ora sono."])
+def test_simple_phrases_skip_remote_classification(tmp_path, text, caplog):
+    service = make_service(tmp_path, None)
+    with caplog.at_level(logging.INFO):
+        result = service.process(text)
+    assert service._router.calls == []
+    assert not result.saved and not result.contexts
+    assert '"bypass": "simple_phrase"' in caplog.text
+
+
+@pytest.mark.parametrize("text", ["Ciao, mi chiamo Giovanni", "Come ti chiami nel mio progetto?",
+                                 "Grazie, ricorda che uso una ESP32-S3"])
+def test_bypass_preserves_personal_facts_and_context_questions(tmp_path, text):
+    service = make_service(tmp_path, IntentAnalysis(
+        should_save=False, needs_context=False, category="generale", tags=[], summary=""))
+    service.process(text)
+    assert len(service._router.calls) == 1
+
+
+def test_memory_statistics_do_not_include_personal_content(tmp_path, caplog):
+    service = make_service(tmp_path, IntentAnalysis(
+        should_save=True, needs_context=False, category="famiglia", tags=["figlio"],
+        summary="Mio figlio si chiama Mario"))
+    with caplog.at_level(logging.INFO):
+        service.process("Mio figlio si chiama Mario")
+    record = next(record for record in caplog.records if "[Memory]" in record.message)
+    stats = json.loads(record.message.split(" ", 3)[3])
+    assert stats["saved"] is True
+    assert stats["needs_context"] is False
+    assert stats["classification_duration_ms"] >= 0
+    assert "Mario" not in caplog.text
+
+
+def test_model_callback_records_duration_and_usage():
+    from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration, LLMResult
+
+    callback = MemoryModelTiming()
+    callback.on_chat_model_start({}, [])
+    callback.on_llm_end(LLMResult(generations=[[ChatGeneration(message=AIMessage(
+        content="", usage_metadata={"input_tokens": 20, "output_tokens": 5,
+                                    "total_tokens": 25}))]]))
+    assert callback.stats["model_duration_ms"] >= 0
+    assert callback.stats["total_tokens"] == 25

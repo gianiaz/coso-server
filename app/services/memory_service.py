@@ -2,16 +2,58 @@ import json
 import logging
 import re
 import sqlite3
+from time import perf_counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain_openai import ChatOpenAI
+from langchain_core.callbacks import BaseCallbackHandler
 from pydantic import BaseModel, Field
-from app.timing import timed_phase
+from app.timing import log_statistics, timed_phase
 
 
 LOGGER = logging.getLogger(__name__)
+
+# Exact matches only: never bypass a message containing personal facts or a
+# reference to a previous conversation merely because it starts with a greeting.
+NO_MEMORY_PHRASES = frozenset({
+    "ciao", "salve", "buongiorno", "buonasera", "grazie", "grazie mille",
+    "come ti chiami", "che ore sono", "che ora è", "che ora sono",
+    "dimmi come ti chiami", "dimmi come ti chiami che ora sono",
+})
+
+
+class MemoryModelTiming(BaseCallbackHandler):
+    """Measure the model invocation separately from structured-output parsing."""
+
+    def __init__(self):
+        self.started = None
+        self.stats = {}
+
+    def on_llm_start(self, serialized, prompts, **kwargs):
+        self.started = perf_counter()
+
+    def on_chat_model_start(self, serialized, messages, **kwargs):
+        self.started = perf_counter()
+
+    def on_llm_end(self, response, **kwargs):
+        self._finish("ok")
+        if response.generations and response.generations[0]:
+            message = getattr(response.generations[0][0], "message", None)
+            usage = getattr(message, "usage_metadata", None) or {}
+            self.stats.update({key: usage.get(key) for key in
+                               ("input_tokens", "output_tokens", "total_tokens")})
+
+    def on_llm_error(self, error, **kwargs):
+        self._finish("error")
+        self.stats["error_type"] = type(error).__name__
+
+    def _finish(self, outcome):
+        self.stats["model_outcome"] = outcome
+        if self.started is not None:
+            self.stats["model_duration_ms"] = round(
+                (perf_counter() - self.started) * 1000, 1)
 
 ROUTER_INSTRUCTIONS = """Sei il router della memoria a lungo termine di un assistente.
 Analizza esclusivamente il messaggio corrente e restituisci i campi richiesti.
@@ -165,6 +207,7 @@ class MemoryService:
         result_limit: int = 6,
     ) -> None:
         self.store = SQLiteMemoryStore(database_path)
+        self.model = model
         self.result_limit = max(1, min(result_limit, 20))
         if api_key:
             chat_model = ChatOpenAI(
@@ -205,7 +248,14 @@ class MemoryService:
         )
 
     def process(self, text: str) -> MemoryResult:
-        if not text.strip() or self._router is None:
+        normalized = re.sub(r"[.!?,;:]+", " ", text.casefold())
+        normalized = " ".join(normalized.split())
+        bypass = ("empty" if not text.strip() else
+                  "router_disabled" if self._router is None else
+                  "simple_phrase" if normalized in NO_MEMORY_PHRASES else None)
+        if bypass:
+            log_statistics("Memory", {"model": self.model, "bypass": bypass,
+                                      "text_characters": len(text), "outcome": "ok"})
             analysis = IntentAnalysis(
                 should_save=False,
                 needs_context=False,
@@ -215,41 +265,51 @@ class MemoryService:
             )
             return MemoryResult(analysis=analysis, contexts=(), saved=False)
 
+        started = perf_counter()
+        callback = MemoryModelTiming()
+        stats = {"model": self.model, "text_characters": len(text),
+                 "bypass": None, "outcome": "ok"}
         try:
+            classification_started = perf_counter()
             with timed_phase("memory_classification"):
                 raw_analysis = self._router.invoke(
-                    [("system", ROUTER_INSTRUCTIONS), ("human", text)]
+                    [("system", ROUTER_INSTRUCTIONS), ("human", text)],
+                    config={"callbacks": [callback]},
                 )
-            analysis = (
-                raw_analysis
-                if isinstance(raw_analysis, IntentAnalysis)
-                else IntentAnalysis.model_validate(raw_analysis)
-            )
-            analysis = self._normalize(analysis)
+            stats["classification_duration_ms"] = round(
+                (perf_counter() - classification_started) * 1000, 1)
+            with timed_phase("memory_response_processing"):
+                analysis = (
+                    raw_analysis
+                    if isinstance(raw_analysis, IntentAnalysis)
+                    else IntentAnalysis.model_validate(raw_analysis)
+                )
+                analysis = self._normalize(analysis)
+            stats.update(should_save=analysis.should_save,
+                         needs_context=analysis.needs_context,
+                         tags_count=len(analysis.tags))
 
             with timed_phase("memory_sqlite"):
-                contexts = (
-                    tuple(
-                        self.store.search(
+                contexts = ()
+                if analysis.needs_context:
+                    with timed_phase("memory_search"):
+                        contexts = tuple(self.store.search(
                             category=analysis.category,
                             tags=analysis.tags,
                             limit=self.result_limit,
+                        ))
+                saved = False
+                if analysis.should_save:
+                    with timed_phase("memory_save"):
+                        saved = self.store.save(
+                            summary=analysis.summary,
+                            category=analysis.category,
+                            tags=analysis.tags,
                         )
-                    )
-                    if analysis.needs_context
-                    else ()
-                )
-                saved = (
-                    self.store.save(
-                        summary=analysis.summary,
-                        category=analysis.category,
-                        tags=analysis.tags,
-                    )
-                    if analysis.should_save
-                    else False
-                )
+            stats.update(contexts_count=len(contexts), saved=saved)
             return MemoryResult(analysis=analysis, contexts=contexts, saved=saved)
-        except Exception:
+        except Exception as exc:
+            stats.update(outcome="error", error_type=type(exc).__name__)
             # La memoria è un arricchimento: un errore del router o del DB non deve
             # rendere indisponibile l'assistente principale.
             LOGGER.exception("Classificazione o accesso alla memoria fallito")
@@ -261,6 +321,10 @@ class MemoryService:
                 summary="",
             )
             return MemoryResult(analysis=analysis, contexts=(), saved=False)
+        finally:
+            stats.update(callback.stats)
+            stats["duration_ms"] = round((perf_counter() - started) * 1000, 1)
+            log_statistics("Memory", stats)
 
     @staticmethod
     def format_context(records: tuple[MemoryRecord, ...]) -> str:
