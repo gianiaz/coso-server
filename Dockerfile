@@ -20,6 +20,14 @@ COPY app ./app
 COPY --chown=coso:coso data ./data
 COPY scripts ./scripts
 RUN python scripts/download_piper_voice.py && chown -R coso:coso data/voices
+RUN python scripts/download_whistle.py --output-dir data/whistle \
+    && chown -R coso:coso data/whistle
+ENV NEEDLE_WHISTLE_WEIGHTS=/app/data/whistle/whistle.cact \
+    NEEDLE3_LIB_PATH=/app/data/whistle/libneedle.so \
+    HF_HUB_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    NEEDLE_TELEMETRY=0 \
+    DO_NOT_TRACK=1
 COPY wsgi.py .
 
 USER coso

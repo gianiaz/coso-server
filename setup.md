@@ -72,9 +72,16 @@ python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python scripts/download_piper_voice.py
+.venv/bin/python scripts/download_whistle.py
 ```
 
 Non è necessario attivare la virtualenv: nei comandi di questa guida viene sempre usato il percorso completo di Python o Gunicorn.
+
+Esegui il download Whistle con lo stesso utente che avviera il servizio:
+prepara pesi e runtime nella sua cache locale. Il download richiede Internet;
+durante le trascrizioni il server forza invece la modalita offline e non
+scarica file. Se usi una directory diversa con `--output-dir`, configura
+`NEEDLE_WHISTLE_WEIGHTS` e `NEEDLE3_LIB_PATH` con i percorsi stampati dal comando.
 
 Lo script scarica modello e configurazione in `data/voices` e riutilizza i
 file se presenti. Per una prova di sintesi:

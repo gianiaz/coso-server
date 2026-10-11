@@ -35,15 +35,25 @@ class WhistleTranscriptionService:
             samples = array.array("f", (sample / 32768.0 for sample in pcm))
             with _whistle_lock:
                 if self._model is None:
-                    os.environ.setdefault("NEEDLE_TELEMETRY", "0")
-                    os.environ.setdefault("DO_NOT_TRACK", "1")
+                    # Local inference must never download assets or register Hub usage.
+                    os.environ["NEEDLE_TELEMETRY"] = "0"
+                    os.environ["DO_NOT_TRACK"] = "1"
+                    os.environ["HF_HUB_OFFLINE"] = "1"
+                    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+                    # Hub may already have been imported by another dependency.
+                    from huggingface_hub import constants as hub_constants
+                    hub_constants.HF_HUB_OFFLINE = True
+                    hub_constants.HF_HUB_DISABLE_TELEMETRY = True
                     self._model = import_module("needle").Whistle()
                 result = self._model.transcribe(samples, language="it")
             text = result.get("text") if isinstance(result, dict) else None
             if not isinstance(text, str):
                 raise ValueError("Risposta Whistle non valida")
         except Exception as exc:
-            raise TranscriptionServiceError("Trascrizione Whistle fallita") from exc
+            raise TranscriptionServiceError(
+                "Trascrizione Whistle fallita (solo locale); verifica pesi e runtime "
+                "preparati con scripts/download_whistle.py"
+            ) from exc
 
         transcript = text.strip()
         if not transcript:

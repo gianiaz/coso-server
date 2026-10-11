@@ -1,4 +1,5 @@
 import struct
+import socket
 import wave
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -6,11 +7,22 @@ from threading import Event, Lock
 from unittest.mock import Mock, patch
 
 import pytest
+from huggingface_hub import constants as hub_constants
 
 from app import create_app
 from app.services.transcription_service import (
     TranscriptionService, TranscriptionServiceError, WhistleTranscriptionService,
 )
+
+
+@pytest.fixture(autouse=True)
+def restore_offline_settings(monkeypatch):
+    # The adapter intentionally forces these process-wide settings.
+    for name in ("NEEDLE_TELEMETRY", "DO_NOT_TRACK", "HF_HUB_OFFLINE",
+                 "HF_HUB_DISABLE_TELEMETRY"):
+        monkeypatch.setenv(name, "0")
+    monkeypatch.setattr(hub_constants, "HF_HUB_OFFLINE", False)
+    monkeypatch.setattr(hub_constants, "HF_HUB_DISABLE_TELEMETRY", False)
 
 
 def wav_bytes(samples=(-32768, -16384, 0, 16384, 32767), rate=16000):
@@ -120,3 +132,40 @@ def test_app_rejects_unknown_backend(tmp_path):
     with pytest.raises(RuntimeError, match="TRANSCRIPTION_BACKEND"):
         create_app({"COSO_API_KEY": "test", "WAV_OUTPUT_DIR": str(tmp_path),
                     "TRANSCRIPTION_BACKEND": "typo"})
+
+
+@pytest.mark.parametrize("cached", [True, False])
+def test_real_needle_initialization_never_opens_network(tmp_path, monkeypatch, cached):
+    # Use the installed Needle/Hub loading code, substituting only native inference.
+    import needle
+    from needle.agent import fetch, whistle
+
+    monkeypatch.setattr(fetch, "cache_dir", lambda generation: str(tmp_path / str(generation)))
+    monkeypatch.delenv("NEEDLE_WHISTLE_WEIGHTS", raising=False)
+    weights = tmp_path / fetch.WHISTLE / fetch.base_weights(fetch.WHISTLE)
+    if cached:
+        weights.parent.mkdir(parents=True)
+        weights.write_bytes(b"local-model")
+    native = Mock()
+    native.needle_load.return_value = 0
+
+    def native_transcribe(*args):
+        args[5].value = b'{"text":"Ciao"}'
+        return 0
+
+    native.needle_transcribe.side_effect = native_transcribe
+    monkeypatch.setattr(whistle, "_lib", lambda: native)
+    monkeypatch.setattr(whistle, "_loaded", None)
+    with patch.object(socket.socket, "connect", side_effect=AssertionError("network forbidden")) as connect:
+        service = WhistleTranscriptionService()
+        if cached:
+            assert service.transcribe(wav_bytes()) == "Ciao"
+            assert service.transcribe(wav_bytes()) == "Ciao"
+            native.needle_load.assert_called_once()
+        else:
+            with pytest.raises(TranscriptionServiceError, match="solo locale"):
+                service.transcribe(wav_bytes())
+            native.needle_load.assert_not_called()
+        connect.assert_not_called()
+    assert hub_constants.HF_HUB_OFFLINE is True
+    assert hub_constants.HF_HUB_DISABLE_TELEMETRY is True

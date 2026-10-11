@@ -9,3 +9,4 @@ htmlcov/
 data/wav/*.wav
 data/*.sqlite3*
 data/voices/
+data/whistle/

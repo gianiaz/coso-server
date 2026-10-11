@@ -257,10 +257,25 @@ Un lock per processo serializza le chiamate al runtime nativo, non thread-safe.
 Gli errori e le trascrizioni vuote mantengono la risposta `502 transcription_error`;
 non viene effettuato un fallback automatico verso OpenAI.
 
-Alla prima chiamata Needle scarica pesi e runtime da Hugging Face: serve accesso
-a Internet, anche se le trascrizioni successive sono locali. Nel container la
-cache è conservata nel volume `whistle-cache` sotto `/home/coso/.cache`, scrivibile
-dall'utente del servizio. La telemetria è disabilitata per impostazione predefinita.
+Whistle funziona solo con pesi e runtime gia presenti: il server forza
+`HF_HUB_OFFLINE=1` e disabilita la telemetria di Needle e Hugging Face.
+Non scarica file durante le richieste e non contatta il Hub per registrare
+l'utilizzo del modello. Se mancano i file locali, restituisce un errore di
+trascrizione senza fallback remoto.
+
+Per un'installazione nativa, scarica i file una volta, prima di avviare il
+server, usando lo stesso utente del servizio (questo comando richiede Internet):
+
+```bash
+.venv/bin/python scripts/download_whistle.py
+```
+
+Il comando usa la cache Needle dell'utente. Puoi invece usare `--output-dir`
+e impostare `NEEDLE_WHISTLE_WEIGHTS` e `NEEDLE3_LIB_PATH` con i percorsi dei
+due file stampati dal comando. Il runtime deve corrispondere al sistema e
+all'architettura del server.
+Nel container i file vengono scaricati durante la build in `/app/data/whistle`;
+le richieste usano questi file locali, senza dipendere dal volume della cache.
 Il binding Python richiede un sistema a 64 bit x86_64 o ARM64; sul Raspberry Pi
 usare sistema operativo e Python a 64 bit.
 
@@ -277,7 +292,7 @@ del commit dedicato. `OPENAI_API_KEY` resta necessaria per risposte e memoria.
 
 La sonda seguente usa lo stesso adapter del server, senza chiamare OpenAI.
 Il WAV deve essere PCM16 mono a 16000 Hz; il primo tempo include inizializzazione
-ed eventuale download, i successivi misurano il modello già caricato:
+dei file locali; i successivi misurano il modello già caricato:
 
 ```bash
 python scripts/probe_whistle.py domanda.wav --runs 3
