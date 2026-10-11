@@ -21,6 +21,8 @@ SOX_EFFECTS = (
     "norm", "-3", "highpass", "100", "pitch", "-40", "bass", "+2",
     "compand", "0.1,0.2", "6:-60,-30,-10", "-3", "-90", "0.1",
     "echo", "0.8", "0.8", "15", "0.3",
+    # Attenuate after normalization and all other effects to retain half amplitude.
+    "vol", "0.5",
 )
 
 

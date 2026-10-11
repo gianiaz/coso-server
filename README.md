@@ -78,10 +78,14 @@ Prima di pubblicare il WAV, il server elabora l'audio con SoX usando questa
 catena di effetti, nell'ordine indicato:
 
 ```text
-norm -3 highpass 100 pitch -40 bass +2 compand 0.1,0.2 6:-60,-30,-10 -3 -90 0.1 echo 0.8 0.8 15 0.3
+norm -3 highpass 100 pitch -40 bass +2 compand 0.1,0.2 6:-60,-30,-10 -3 -90 0.1 echo 0.8 0.8 15 0.3 vol 0.5
 ```
 
 Il WAV finale rimane PCM mono a 16 bit alla frequenza originale di Piper.
+L'effetto finale `vol 0.5` dimezza l'ampiezza rispetto alla catena precedente
+(circa -6 dB). La riduzione avviene dopo tutti gli effetti, per evitare che
+`norm` compensi un volume piu basso impostato direttamente in Piper.
+Si applica ai nuovi WAV sintetizzati; i file gia presenti non vengono modificati.
 Solo il file elaborato e validato viene pubblicato; se Piper o SoX falliscono,
 il server restituisce un errore e conserva l'eventuale WAV precedente.
 I file temporanei vengono eliminati anche in caso di errore.

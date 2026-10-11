@@ -100,6 +100,8 @@ def test_generates_wav_with_piper_and_reuses_model(tmp_path, sox_run):
     assert arguments[:3] == ["sox", "-t", "wav"]
     assert arguments[4:14] == ["-t", "wav", "-e", "signed-integer", "-b", "16", "-c", "1", "-r", "22050"]
     assert arguments[15:] == list(SOX_EFFECTS)
+    # Apply attenuation last: a later norm would undo the volume reduction.
+    assert arguments[-2:] == ["vol", "0.5"]
     assert sox_run.call_args.kwargs == {
         "check": True, "capture_output": True, "text": True, "timeout": 90,
     }
