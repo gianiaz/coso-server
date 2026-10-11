@@ -1,9 +1,54 @@
+import array
+import os
+import sys
+import wave
+from importlib import import_module
+from io import BytesIO
+from threading import Lock
+
 from langchain_community.document_loaders.blob_loaders import Blob
 from langchain_community.document_loaders.parsers.audio import OpenAIWhisperParser
 
 
 class TranscriptionServiceError(RuntimeError):
     pass
+
+
+# Needle's native model state is shared by every Whistle instance in a process.
+_whistle_lock = Lock()
+
+
+class WhistleTranscriptionService:
+    def __init__(self) -> None:
+        self._model = None
+
+    def transcribe(self, wav_data: bytes) -> str:
+        try:
+            with wave.open(BytesIO(wav_data), "rb") as wav:
+                if (wav.getnchannels(), wav.getsampwidth(), wav.getframerate()) != (1, 2, 16000):
+                    raise ValueError("Whistle richiede WAV PCM mono 16 bit, 16000 Hz")
+                pcm = array.array("h")
+                pcm.frombytes(wav.readframes(wav.getnframes()))
+            if sys.byteorder == "big":
+                pcm.byteswap()
+            # Whistle interprets bytes as float32 samples, not as a WAV file.
+            samples = array.array("f", (sample / 32768.0 for sample in pcm))
+            with _whistle_lock:
+                if self._model is None:
+                    os.environ.setdefault("NEEDLE_TELEMETRY", "0")
+                    os.environ.setdefault("DO_NOT_TRACK", "1")
+                    self._model = import_module("needle").Whistle()
+                result = self._model.transcribe(samples, language="it")
+            text = result.get("text") if isinstance(result, dict) else None
+            if not isinstance(text, str):
+                raise ValueError("Risposta Whistle non valida")
+        except Exception as exc:
+            raise TranscriptionServiceError("Trascrizione Whistle fallita") from exc
+
+        transcript = text.strip()
+        if not transcript:
+            raise TranscriptionServiceError("Whistle ha restituito una trascrizione vuota")
+        return transcript
 
 
 class TranscriptionService:

@@ -1,5 +1,6 @@
 import base64
 import wave
+from types import SimpleNamespace
 from io import BytesIO
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import pytest
 
 from app import DEFAULT_OPENAI_INSTRUCTIONS, create_app
 from app.services.openai_service import AskResult, OpenAIServiceError
-from app.services.transcription_service import TranscriptionServiceError
+from app.services.transcription_service import TranscriptionServiceError, WhistleTranscriptionService
 
 
 class FakeOpenAIService:
@@ -89,6 +90,24 @@ def test_default_openai_instructions_describe_coso(monkeypatch, tmp_path):
     assert "Ti chiami Coso" in DEFAULT_OPENAI_INSTRUCTIONS
     assert "Giovanni" in DEFAULT_OPENAI_INSTRUCTIONS
     assert "Riccardo e Letizia" in DEFAULT_OPENAI_INSTRUCTIONS
+
+
+@pytest.mark.parametrize("text,status", [("Ciao Coso", 200), (" ", 502)])
+def test_ask_with_whistle_adapter(client, app, text, status):
+    service = WhistleTranscriptionService()
+    service._model = SimpleNamespace(transcribe=lambda samples, **kwargs: {"text": text})
+    app.extensions["transcription_service"] = service
+
+    response = client.post("/ask", data=make_wav(), content_type="audio/wav")
+
+    assert response.status_code == status
+    if status == 200:
+        assert response.json["type"] == "command"
+        assert response.json["wav"].endswith("ciao-sono-coso-come-stai.wav")
+        assert app.extensions["openai_service"].calls == [(text, None)]
+    else:
+        assert response.json["error"] == "transcription_error"
+        assert app.extensions["openai_service"].calls == []
 
 
 def test_health(client):

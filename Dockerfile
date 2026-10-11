@@ -10,7 +10,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg sox \
     && rm -rf /var/lib/apt/lists/*
 
-RUN addgroup --system coso && adduser --system --ingroup coso coso
+RUN addgroup --system coso && adduser --system --ingroup coso --home /home/coso coso \
+    && mkdir -p /home/coso/.cache && chown -R coso:coso /home/coso
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

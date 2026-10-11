@@ -99,6 +99,7 @@ Configurazione minima consigliata:
 OPENAI_API_KEY=la-tua-api-key-openai
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4.1-mini
+TRANSCRIPTION_BACKEND=whistle
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 
 COSO_API_KEY=la-stessa-chiave-configurata-in-buddy

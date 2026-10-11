@@ -8,6 +8,9 @@ services:
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
       OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4.1-mini}"
+      TRANSCRIPTION_BACKEND: "${TRANSCRIPTION_BACKEND:-whistle}"
+      NEEDLE_TELEMETRY: "0"
+      DO_NOT_TRACK: "1"
       OPENAI_TRANSCRIPTION_MODEL: "${OPENAI_TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}"
       MEMORY_ROUTER_MODEL: "${MEMORY_ROUTER_MODEL:-gpt-4o-mini}"
       MEMORY_DB_PATH: "${MEMORY_DB_PATH:-/app/data/memory/memory.sqlite3}"
@@ -23,6 +26,7 @@ services:
     volumes:
       - wav-data:/app/data/wav
       - memory-data:/app/data/memory
+      - whistle-cache:/home/coso/.cache
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import os, urllib.request; request = urllib.request.Request('http://localhost:8000/health', headers={'X-API-Key': os.environ['COSO_API_KEY']}); urllib.request.urlopen(request, timeout=3)"]
@@ -34,3 +38,4 @@ services:
 volumes:
   wav-data:
   memory-data:
+  whistle-cache:

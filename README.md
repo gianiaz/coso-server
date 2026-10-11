@@ -223,7 +223,8 @@ Le variabili principali sono documentate in `.env.example`.
 - `OPENAI_API_KEY`: obbligatoria per le richieste AI.
 - `OPENAI_BASE_URL`: base URL del servizio; normalmente non va modificata.
 - `OPENAI_MODEL`: modello usato; predefinito `gpt-4.1-mini`.
-- `OPENAI_TRANSCRIPTION_MODEL`: modello speech-to-text; predefinito `gpt-4o-mini-transcribe`.
+- `TRANSCRIPTION_BACKEND`: `whistle` (predefinito, locale) oppure `openai`.
+- `OPENAI_TRANSCRIPTION_MODEL`: modello speech-to-text usato solo con backend `openai`; predefinito `gpt-4o-mini-transcribe`.
 - `MEMORY_ROUTER_MODEL`: modello economico per classificazione ed estrazione; predefinito `gpt-4o-mini`.
 - `MEMORY_DB_PATH`: percorso del database SQLite persistente.
 - `MEMORY_RESULT_LIMIT`: massimo numero di ricordi iniettati in una risposta; predefinito `6`.
@@ -237,9 +238,63 @@ Le variabili principali sono documentate in `.env.example`.
 La chiave OpenAI non viene mai inviata al client e le richieste upstream usano
 `store=false`. Coso Server non conserva immagini o registrazioni; salva localmente
 solo le sintesi che il router identifica come memoria durevole. Le domande vocali
-vengono trascritte tramite `OpenAIWhisperParser` (`langchain-community`); il testo
+vengono trascritte localmente da Whistle (`cactus-needle==3.2.0`), in italiano;
+con `TRANSCRIPTION_BACKEND=openai` si usa invece `OpenAIWhisperParser`
+(`langchain-community`). In entrambi i casi il testo
 passa quindi a `ChatOpenAI` (`langchain-openai`) usando la Responses API. Il parser
-audio richiede `ffmpeg`, già incluso nell'immagine Docker.
+audio OpenAI richiede `ffmpeg`, già incluso nell'immagine Docker.
+
+### Prova Whistle e ripristino
+
+Questa variante mantiene lo stesso contratto `/ask` e la stessa autenticazione.
+Whistle riceve campioni float32 ottenuti dal WAV PCM16 di Buddy; l'audio resta
+in memoria. Il modello viene inizializzato alla prima trascrizione e riutilizzato.
+Un lock per processo serializza le chiamate al runtime nativo, non thread-safe.
+Gli errori e le trascrizioni vuote mantengono la risposta `502 transcription_error`;
+non viene effettuato un fallback automatico verso OpenAI.
+
+Alla prima chiamata Needle scarica pesi e runtime da Hugging Face: serve accesso
+a Internet, anche se le trascrizioni successive sono locali. Nel container la
+cache è conservata nel volume `whistle-cache` sotto `/home/coso/.cache`, scrivibile
+dall'utente del servizio. La telemetria è disabilitata per impostazione predefinita.
+Il binding Python richiede un sistema a 64 bit x86_64 o ARM64; sul Raspberry Pi
+usare sistema operativo e Python a 64 bit.
+
+Per attivare la prova nel container:
+
+```bash
+docker compose up -d --build coso-server
+```
+
+Per tornare al servizio precedente, impostare `TRANSCRIPTION_BACKEND=openai`
+nel file `.env` e ricreare il container con `docker compose up -d coso-server`.
+Per eliminare anche codice, dipendenza e configurazione Whistle, fare il revert
+del commit dedicato. `OPENAI_API_KEY` resta necessaria per risposte e memoria.
+
+La sonda seguente usa lo stesso adapter del server, senza chiamare OpenAI.
+Il WAV deve essere PCM16 mono a 16000 Hz; il primo tempo include inizializzazione
+ed eventuale download, i successivi misurano il modello già caricato:
+
+```bash
+python scripts/probe_whistle.py domanda.wav --runs 3
+```
+
+Prova locale dell'11 ottobre 2026: Windows x86_64, Python 3.14.2,
+`cactus-needle 3.2.0`, engine Needle 3.3.0, pesi Whistle 2.0.0 (16.919.407 byte).
+Tre WAV sintetici già presenti nel repository, ricampionati a 16 kHz, hanno dato:
+
+| Audio | Durata | Trascrizione | Tempo a modello caricato |
+| --- | --- | --- | --- |
+| `hello/ciao.wav` | 0,809 s | Ciao. | 36 ms |
+| `wakeup/come-posso-aiutarti.wav` | 1,685 s | Come posso aiutarti? | 77–89 ms |
+| Prova voce Paola | 3,541 s | Ciao Giovanni, sono Coso. Questa è una prova della voce palla. | 214–225 ms |
+
+Il primo caricamento, inclusi i download, ha richiesto 4,576 s. La sostituzione
+di "Paola" con "palla" è un errore osservato. Questi risultati non misurano
+il microfono di Buddy, il rumore ambientale o le prestazioni del Raspberry Pi;
+la qualità va verificata con registrazioni reali prima di adottare la variante.
+Fonti del progetto: [Whistle](https://huggingface.co/Cactus-Compute/whistle)
+e [runtime Needle](https://github.com/cactus-compute/needle).
 
 ## Test
 

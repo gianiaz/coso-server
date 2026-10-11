@@ -9,7 +9,7 @@ from app.auth import authenticate_request
 from app.services.openai_service import OpenAIService
 from app.services.memory_service import MemoryService
 from app.services.speech_service import SpeechService
-from app.services.transcription_service import TranscriptionService
+from app.services.transcription_service import TranscriptionService, WhistleTranscriptionService
 from app.timing import install_request_timing
 
 
@@ -38,6 +38,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", ""),
         OPENAI_BASE_URL=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         OPENAI_MODEL=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+        TRANSCRIPTION_BACKEND=os.getenv("TRANSCRIPTION_BACKEND", "whistle"),
         MEMORY_ROUTER_MODEL=os.getenv("MEMORY_ROUTER_MODEL", "gpt-4o-mini"),
         MEMORY_DB_PATH=os.getenv(
             "MEMORY_DB_PATH",
@@ -102,11 +103,16 @@ def create_app(test_config: dict | None = None) -> Flask:
         timeout=app.config["OPENAI_TIMEOUT_SECONDS"],
         result_limit=app.config["MEMORY_RESULT_LIMIT"],
     )
-    app.extensions["transcription_service"] = TranscriptionService(
-        api_key=app.config["OPENAI_API_KEY"],
-        base_url=app.config["OPENAI_BASE_URL"],
-        model=app.config["OPENAI_TRANSCRIPTION_MODEL"],
-    )
+    if app.config["TRANSCRIPTION_BACKEND"] == "whistle":
+        app.extensions["transcription_service"] = WhistleTranscriptionService()
+    elif app.config["TRANSCRIPTION_BACKEND"] == "openai":
+        app.extensions["transcription_service"] = TranscriptionService(
+            api_key=app.config["OPENAI_API_KEY"],
+            base_url=app.config["OPENAI_BASE_URL"],
+            model=app.config["OPENAI_TRANSCRIPTION_MODEL"],
+        )
+    else:
+        raise RuntimeError("TRANSCRIPTION_BACKEND deve essere whistle oppure openai")
     app.extensions["speech_service"] = SpeechService(
         output_dir=Path(app.config["WAV_OUTPUT_DIR"]),
         model_path=Path(app.config["PIPER_MODEL_PATH"]),
