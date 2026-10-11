@@ -10,7 +10,7 @@ def test_info_logging_with_preconfigured_host(tmp_path, caplog, monkeypatch):
     monkeypatch.setenv("LOG_LEVEL", "INFO")
     # Simulate a host that installed handlers before creating the Flask app.
     with caplog.at_level(logging.WARNING):
-        app = create_app({"COSO_API_KEY": "test", "WAV_OUTPUT_DIR": str(tmp_path),
+        app = create_app({"COSO_API_KEY": "test", "PIPER_PRELOAD": False, "WAV_OUTPUT_DIR": str(tmp_path),
                           "OPENAI_API_KEY": "", "MEMORY_DB_PATH": str(tmp_path / "memory.db")})
         assert logging.getLogger().level == logging.INFO
         assert app.logger.getEffectiveLevel() == logging.INFO

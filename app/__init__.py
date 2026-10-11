@@ -67,6 +67,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             str(Path(__file__).resolve().parent.parent / "data" / "voices" / "it_IT-serena-high.onnx"),
         ),
         PIPER_LENGTH_SCALE=float(os.getenv("PIPER_LENGTH_SCALE", "1.25")),
+        PIPER_PRELOAD=True,
         SOX_PATH=os.getenv("SOX_PATH", "sox"),
     )
 
@@ -123,6 +124,8 @@ def create_app(test_config: dict | None = None) -> Flask:
         length_scale=app.config["PIPER_LENGTH_SCALE"],
         sox_path=app.config["SOX_PATH"],
     )
+    if app.config["PIPER_PRELOAD"]:
+        app.extensions["speech_service"].preload()
     install_request_timing(app)
     app.before_request(authenticate_request)
     app.register_blueprint(api)

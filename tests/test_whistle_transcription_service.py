@@ -130,7 +130,7 @@ def test_process_lock_serializes_two_service_instances():
 @pytest.mark.parametrize("backend,cls", [("whistle", WhistleTranscriptionService),
                                          ("openai", TranscriptionService)])
 def test_app_selects_backend(tmp_path, backend, cls):
-    app = create_app({"COSO_API_KEY": "test", "WAV_OUTPUT_DIR": str(tmp_path),
+    app = create_app({"COSO_API_KEY": "test", "PIPER_PRELOAD": False, "WAV_OUTPUT_DIR": str(tmp_path),
                       "TRANSCRIPTION_BACKEND": backend, "OPENAI_API_KEY": ""})
     assert isinstance(app.extensions["transcription_service"], cls)
 

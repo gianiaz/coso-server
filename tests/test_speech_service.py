@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 from types import SimpleNamespace
 
 from flask import Flask, g
+from app import create_app
 
 import pytest
 
@@ -278,3 +279,33 @@ def test_speech_logs_runtime_and_audio_speed(tmp_path, caplog, monkeypatch, fail
         assert stats["wav_bytes"] == 4454
         assert json.loads(records[1].split(" ", 3)[3])["model_loaded_this_request"] is False
     assert all("Testo privato" not in message for message in messages)
+
+
+def test_preload_at_app_start_reuses_model_for_first_question(tmp_path, caplog):
+    caplog.set_level("INFO")
+    voice = Mock()
+    voice.synthesize_wav.side_effect = write_audio
+    model_path = tmp_path / "it_IT-serena-medium.onnx"
+    with patch("app.services.speech_service.PiperVoice.load", return_value=voice) as load:
+        app = create_app({"COSO_API_KEY": "test", "OPENAI_API_KEY": "",
+                          "WAV_OUTPUT_DIR": str(tmp_path), "PIPER_MODEL_PATH": str(model_path),
+                          "MEMORY_DB_PATH": str(tmp_path / "memory.db")})
+        load.assert_called_once_with(str(model_path))
+        voice.synthesize_wav.assert_not_called()
+        service = app.extensions["speech_service"]
+        service.preload()  # Idempotent: already initialized at app creation.
+        service.generate("Ciao")
+        load.assert_called_once_with(str(model_path))
+    stats = [record.getMessage() for record in caplog.records
+             if record.getMessage().startswith("[Speech]")]
+    assert json.loads(stats[0].split(" ", 3)[3])["model_loaded_this_request"] is False
+
+
+def test_preload_failure_prevents_server_start(tmp_path, caplog):
+    caplog.set_level("INFO")
+    with patch("app.services.speech_service.PiperVoice.load", side_effect=FileNotFoundError):
+        with pytest.raises(SpeechGenerationError, match="Preload Piper fallito"):
+            create_app({"COSO_API_KEY": "test", "OPENAI_API_KEY": "",
+                        "WAV_OUTPUT_DIR": str(tmp_path), "PIPER_MODEL_PATH": str(tmp_path / "missing.onnx"),
+                        "MEMORY_DB_PATH": str(tmp_path / "memory.db")})
+    assert any("phase=piper_preload outcome=error" in record.getMessage() for record in caplog.records)

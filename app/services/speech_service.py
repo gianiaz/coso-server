@@ -115,6 +115,26 @@ class SpeechService:
         self._generation_lock = Lock()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    def _load_voice(self) -> bool:
+        # Caller holds the generation lock; preload and requests share one model.
+        if self._voice is not None:
+            return False
+        with timed_phase("piper_model_load"):
+            self._voice = PiperVoice.load(str(self.model_path))
+        self._log_runtime()
+        return True
+
+    def preload(self) -> None:
+        """Load the configured voice before the server accepts requests."""
+        with timed_phase("piper_preload"):
+            with self._generation_lock:
+                try:
+                    self._load_voice()
+                except Exception as exc:
+                    raise SpeechGenerationError(
+                        f"Preload Piper fallito: verifica modello e JSON {self.model_path}"
+                    ) from exc
+
     def _log_runtime(self) -> None:
         stats = {
             "model_path": str(self.model_path.resolve()),
@@ -168,11 +188,7 @@ class SpeechService:
             temporary = self.output_dir / f".{uuid4().hex}.wav.tmp"
             processed = self.output_dir / f".{uuid4().hex}.processed.wav.tmp"
             try:
-                if self._voice is None:
-                    with timed_phase("piper_model_load"):
-                        self._voice = PiperVoice.load(str(self.model_path))
-                    stats["model_loaded_this_request"] = True
-                    self._log_runtime()
+                stats["model_loaded_this_request"] = self._load_voice()
                 synthesis_started = perf_counter()
                 try:
                     with timed_phase("piper_synthesis"):

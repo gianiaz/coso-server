@@ -63,7 +63,9 @@ restituisce HTTP 503 con `error: hello_unavailable`.
 I WAV generati da `/ask` vengono salvati in `data/wav` e serviti da `GET /wav/<filename>`. Se il server è dietro un reverse proxy, imposta `WAV_PUBLIC_BASE_URL` con l'origine pubblica, senza slash finale.
 
 La sintesi usa Piper (`piper-tts`) con la voce italiana Serena high. Il modello
-viene caricato alla prima sintesi e riutilizzato nelle richieste successive.
+viene precaricato all'avvio del processo server e riutilizzato nelle richieste
+successive. Se il modello o il JSON non sono disponibili, il processo non
+completa l'avvio: scarica la voce scelta prima di riavviare il servizio.
 Puoi regolare `PIPER_LENGTH_SCALE` nel file `.env`: `1.0` usa la velocita
 del modello, valori maggiori rallentano la voce e valori minori la accelerano.
 Le vecchie variabili `ESPEAK_*` non sono piu usate.
@@ -400,6 +402,12 @@ prima di iniziare e `phase_end` con `duration_ms` ed esito `ok` o `error`.
 | `sox_processing` | Elaborazione degli effetti e riduzione del volume |
 | `wav_publication` | Verifica e pubblicazione del WAV finale |
 
+Piper registra `piper_preload`, `piper_model_load` e `[PiperRuntime]` all'avvio,
+con ID `-` perche non e ancora presente una richiesta HTTP. L'attesa di
+caricamento viene spostata al riavvio del servizio; non esegue una sintesi
+di riscaldamento e non elimina il costo dell'inferenza della prima domanda.
+Con Gunicorn il modello viene precaricato in ogni worker; la configurazione
+del progetto usa un solo worker e non richiede `--preload` di Gunicorn.
 I caricamenti dei modelli compaiono solo quando necessari; i modelli restano
 in memoria nelle richieste successive. `openai_request` include anche il
 trasporto e il decoding effettuato dal client, non misura solo il calcolo remoto.
