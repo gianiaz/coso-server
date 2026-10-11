@@ -1,4 +1,4 @@
-"""Download the Serena high voice and matching config without requiring Piper installed."""
+"""Download Italian Piper voices and matching configs without requiring Piper installed."""
 
 import argparse
 import json
@@ -12,13 +12,24 @@ REVISION = "c704759b2286f5f8c56eb4476169c4e2cda10b02"
 BASE_URL = (
     f"https://huggingface.co/committa/it_IT-serena-high/resolve/{REVISION}"
 )
+VOICES = {
+    VOICE: BASE_URL,
+    "it_IT-serena-medium": (
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/serena/medium"
+    ),
+    "it_IT-riccardo-x_low": (
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/it/it_IT/riccardo/x_low"
+    ),
+}
 DEFAULT_DIRECTORY = Path(__file__).resolve().parent.parent / "data" / "voices"
 
 
-def download_voice(directory: Path, *, force: bool = False) -> Path:
+def download_voice(directory: Path, *, voice: str = VOICE, force: bool = False) -> Path:
+    if voice not in VOICES:
+        raise ValueError(f"Voce non supportata: {voice}")
     directory.mkdir(parents=True, exist_ok=True)
-    model = directory / f"{VOICE}.onnx"
-    config = directory / f"{VOICE}.onnx.json"
+    model = directory / f"{voice}.onnx"
+    config = directory / f"{voice}.onnx.json"
     if not force and model.is_file() and model.stat().st_size > 0 and config.is_file():
         json.loads(config.read_text(encoding="utf-8"))
         print(f"Voce gia presente: {model}")
@@ -29,7 +40,7 @@ def download_voice(directory: Path, *, force: bool = False) -> Path:
         for destination in (model, config):
             temporary = directory / f".{uuid4().hex}.download"
             pending.append((temporary, destination))
-            url = f"{BASE_URL}/{destination.name}"
+            url = f"{VOICES[voice]}/{destination.name}"
             print(f"Scarico {destination.name}...", flush=True)
             with urlopen(url, timeout=120) as response, temporary.open("wb") as output:
                 shutil.copyfileobj(response, output)
@@ -52,8 +63,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_DIRECTORY)
     parser.add_argument("--force", action="store_true")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--voice", choices=tuple(VOICES), action="append",
+                           help="Voce da scaricare; ripetibile, predefinita: Serena high")
+    selection.add_argument("--all", action="store_true", help="Scarica tutte le voci disponibili")
     args = parser.parse_args()
-    download_voice(args.output_dir, force=args.force)
+    voices = tuple(VOICES) if args.all else (args.voice or [VOICE])
+    for voice in dict.fromkeys(voices):
+        download_voice(args.output_dir, voice=voice, force=args.force)
 
 
 if __name__ == "__main__":

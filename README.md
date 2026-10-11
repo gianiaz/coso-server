@@ -115,10 +115,30 @@ python scripts/download_piper_voice.py
 Lo script scarica entrambi da una revisione fissa di
 [committa/it_IT-serena-high](https://huggingface.co/committa/it_IT-serena-high/tree/c704759b2286f5f8c56eb4476169c4e2cda10b02)
 in `data/voices`, esclusa da Git. Se i file sono gia presenti li riutilizza;
-`--force` li riscarica, `--output-dir` cambia directory. La configurazione
-deve chiamarsi `it_IT-serena-high.onnx.json` accanto al modello ONNX.
+`--force` li riscarica, `--output-dir` cambia directory. Ogni configurazione
+deve chiamarsi come il modello ONNX con il suffisso aggiuntivo `.json`.
+
+Sono disponibili anche `it_IT-serena-medium` e `it_IT-riccardo-x_low`, dal
+repository `rhasspy/piper-voices` (revisione `main`). Per scaricare entrambe:
+
+```bash
+.venv/bin/python scripts/download_piper_voice.py --voice it_IT-serena-medium --voice it_IT-riccardo-x_low
+# Per tutte e tre le voci:
+.venv/bin/python scripts/download_piper_voice.py --all
+```
+
+Senza opzioni lo script continua a scaricare solo Serena high. Per selezionare
+una voce scaricata, imposta nel `.env`, per esempio:
+
+```text
+PIPER_MODEL_PATH=data/voices/it_IT-serena-medium.onnx
+```
+
+Riavvia il servizio dopo il cambio; lo script di download non cambia la voce
+configurata nel server.
 Docker scarica la voce durante la build e non richiede download all'avvio.
-Le risposte rimangono WAV PCM mono a 16 bit, 22050 Hz, compatibili con Buddy.
+Le risposte rimangono WAV PCM mono a 16 bit alla frequenza del modello scelto,
+compatibili con Buddy.
 I saluti preregistrati di `/hello` e `/wakeup` si aggiungono come prima.
 
 ### Saluto casuale al risveglio
